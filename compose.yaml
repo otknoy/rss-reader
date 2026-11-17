@@ -1,0 +1,82 @@
+services:
+  db:
+    image: postgres:17.6-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reader
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-local-admin}
+      FEEDS_PASSWORD: ${FEEDS_PASSWORD:-local-feeds}
+      ARTICLES_PASSWORD: ${ARTICLES_PASSWORD:-local-articles}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/01-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d reader"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    image: rss-reader:local
+    build:
+      context: .
+      target: runtime
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: postgres://postgres:${DB_PASSWORD:-local-admin}@db:5432/reader?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: rss-reader:local
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      FEEDS_DATABASE_URL: postgres://feeds_app:${FEEDS_PASSWORD:-local-feeds}@db:5432/reader?sslmode=disable
+      ARTICLES_DATABASE_URL: postgres://articles_app:${ARTICLES_PASSWORD:-local-articles}@db:5432/reader?sslmode=disable
+      LISTEN_ADDR: :8080
+    ports:
+      - "127.0.0.1:${PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    develop:
+      watch:
+        - action: rebuild
+          path: ./cmd
+        - action: rebuild
+          path: ./internal
+        - action: rebuild
+          path: ./go.mod
+        - action: rebuild
+          path: ./go.sum
+    healthcheck:
+      test: ["CMD", "/app/reader", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  test:
+    profiles: [test]
+    image: rss-reader:test
+    build:
+      context: .
+      target: test
+    environment:
+      INTEGRATION_DATABASE_URL: postgres://postgres:${DB_PASSWORD:-local-admin}@db:5432/reader?sslmode=disable
+      FEEDS_DATABASE_URL: postgres://feeds_app:${FEEDS_PASSWORD:-local-feeds}@db:5432/reader?sslmode=disable
+      ARTICLES_DATABASE_URL: postgres://articles_app:${ARTICLES_PASSWORD:-local-articles}@db:5432/reader?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

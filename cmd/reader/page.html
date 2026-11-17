@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>RSS Reader</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #141618;
+  --surface: #1c1f22;
+  --line: #34383d;
+  --text: #e4e6e8;
+  --muted: #a0a6ae;
+  --accent: #a5c7b0;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 system-ui, -apple-system, "Noto Sans JP", sans-serif; }
+a { color: inherit; text-decoration: none; }
+a:hover { color: var(--accent); }
+button, input, textarea { font: inherit; }
+button, .button { display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--text); cursor: pointer; white-space: nowrap; }
+button:hover, .button:hover { background: var(--surface); border-color: var(--muted); }
+button, a, input, textarea, summary { touch-action: manipulation; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+input, textarea { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--text); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+textarea { resize: vertical; }
+form { margin: 0; }
+summary { cursor: pointer; }
+.shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100dvh; }
+.sidebar { position: sticky; top: 0; height: 100dvh; overflow-y: auto; padding: 28px 20px; background: #181b1d; border-right: 1px solid var(--line); }
+.content { min-width: 0; width: 100%; max-width: 1040px; margin: 0 auto; padding: 28px 32px 48px; }
+.heading { margin: 0; font-size: 18px; font-weight: 500; }
+.sidebar .brand { display: inline-block; margin-bottom: 28px; }
+.sidebar .filters { flex-direction: column; gap: 4px; border: 0; margin-bottom: 30px; }
+.sidebar .filters a { display: flex; justify-content: space-between; padding: 7px 10px; border: 0; border-radius: 4px; }
+.sidebar .filters a.active { background: #272d29; color: var(--accent); }
+.sidebar .feeds { margin: 0; }
+.sidebar .feeds h2 { margin: 0 0 8px; font-size: 12px; color: var(--muted); font-weight: 500; }
+.sidebar .feed { border: 0; padding: 8px 0; }
+.sidebar .feed a { font-size: 13px; }
+.sidebar .feed form { flex-shrink: 0; }
+.sidebar .feed button { padding: 2px 5px; color: var(--muted); font-size: 11px; }
+.sidebar .feed-line { align-items: flex-start; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.brand { font-size: 18px; font-weight: 650; }
+.header-actions, .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.add { position: relative; }
+.add > summary { list-style: none; }
+.add > summary::-webkit-details-marker { display: none; }
+.add[open] > summary { border-color: var(--accent); }
+.add-panel { position: absolute; z-index: 2; top: calc(100% + 10px); right: 0; width: min(380px, calc(100vw - 40px)); padding: 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); box-shadow: 0 10px 30px #0006; }
+.add-panel form { display: grid; gap: 10px; }
+.add-panel h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.add-panel hr { margin: 20px 0; border: 0; border-top: 1px solid var(--line); }
+label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+.hint, .muted { color: var(--muted); font-size: 12px; }
+.hint { margin: 0; }
+.filters { display: flex; gap: 22px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.filters a { padding: 8px 0; color: var(--muted); border-bottom: 2px solid transparent; }
+.filters a.active { color: var(--text); border-color: var(--accent); }
+.count { margin-left: 5px; font-size: 12px; color: var(--muted); }
+.search { display: flex; gap: 8px; }
+.feeds { margin: 14px 0 22px; color: var(--muted); font-size: 12px; }
+.feeds > summary { width: fit-content; }
+.feed-list { padding: 8px 0; }
+.feed { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.feed-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.feed a { color: var(--text); overflow-wrap: anywhere; }
+.feed a[aria-current="page"] { color: var(--accent); }
+.feed button { padding: 3px 8px; font-size: 12px; }
+.error { display: block; color: #f0a69c; overflow-wrap: anywhere; margin-top: 5px; }
+.notice { margin-bottom: 18px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; color: var(--accent); }
+.results { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.results h1 { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.article { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.article h2 { margin: 0 0 5px; font-size: 16px; font-weight: 600; line-height: 1.65; overflow-wrap: anywhere; }
+.article.read h2 { font-weight: 400; color: var(--muted); }
+.article-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.actions { gap: 6px; }
+.actions button, .actions .button { padding: 3px 8px; font-size: 12px; }
+.actions .star { min-width: 32px; font-size: 17px; line-height: 1.5; }
+.favorite { color: #e6c677; }
+.more { position: relative; }
+.more > summary { list-style: none; color: var(--muted); padding: 3px 8px; font-size: 16px; }
+.more > summary::-webkit-details-marker { display: none; }
+.more-panel { position: absolute; right: 0; top: 100%; z-index: 1; width: 230px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; }
+.more-panel p { margin: 8px 0; font-size: 12px; color: var(--muted); }
+.more-panel button { color: #f0a69c; }
+.empty { padding: 48px 0; text-align: center; color: var(--muted); }
+.pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
+.reader { max-width: 720px; margin: 24px auto; }
+.reader h1 { font-size: 26px; line-height: 1.65; margin: 14px 0 20px; overflow-wrap: anywhere; }
+.body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 2; margin-top: 32px; }
+.back { color: var(--muted); font-size: 13px; }
+@media (max-width: 600px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; padding: 18px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .sidebar .brand { margin-bottom: 12px; }
+  .sidebar .filters { flex-direction: row; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .sidebar .filters a { gap: 6px; padding: 4px 8px; }
+  .sidebar .feed-list { max-height: 180px; overflow-y: auto; }
+  .content { padding: 20px 16px 32px; }
+  header { margin-bottom: 18px; }
+  .header-actions { gap: 8px; }
+  .filters { gap: 20px; font-size: 13px; }
+  .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .article h2 { font-size: 15px; }
+  .reader h1 { font-size: 22px; }
+  .more-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; top: auto; width: auto; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <a href="/" class="brand">RSS Reader</a>
+  <nav class="filters" aria-label="記事の絞り込み">
+    <a href="/" class="{{if and (eq .Filter "") (eq .FeedID 0)}}active{{end}}">すべて</a>
+    <a href="/?view=unread" class="{{if eq .Filter "unread"}}active{{end}}">未読<span class="count">{{.Result.Unread}}</span></a>
+    <a href="/?view=favorites" class="{{if eq .Filter "favorites"}}active{{end}}">お気に入り<span class="count">{{.Result.Favorites}}</span></a>
+  </nav>
+  <section class="feeds" aria-label="購読フィード">
+    <h2>購読フィード <span class="count">{{len .Feeds}}</span></h2>
+    <div class="feed-list">
+    {{range .Feeds}}
+      <div class="feed">
+        <div class="feed-line">
+          <a href="/?feed={{.ID}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
+          <form action="/feeds/{{.ID}}/remove" method="post"><input type="hidden" name="return_to" value="/"><button aria-label="{{.Title}}の購読を解除">解除</button></form>
+        </div>
+        {{if .LastError}}<small class="error">取得エラー：{{.LastError}}</small>{{else if not .CheckedAt}}<span class="muted">未取得</span>{{end}}
+      </div>
+    {{else}}<p>フィードは未登録です。「追加」から登録できます。</p>{{end}}
+    </div>
+  </section>
+</aside>
+<div class="content">
+<header>
+  <p class="heading">{{if .Detail}}記事{{else if eq .Filter "unread"}}未読{{else if eq .Filter "favorites"}}お気に入り{{else}}記事一覧{{end}}</p>
+  <div class="header-actions">
+    <form method="post" action="/refresh">
+      <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+      <button>更新</button>
+    </form>
+    <details class="add">
+      <summary class="button">追加</summary>
+      <div class="add-panel">
+        <form method="post" action="/feeds">
+          <h2>フィードを追加</h2>
+          <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+          <label>RSS / Atom URL<input type="url" name="url" required placeholder="https://example.com/feed.xml" maxlength="4096"></label>
+          <button>購読する</button>
+          <p class="hint">登録後に「更新」で記事を取得します。</p>
+        </form>
+        <hr>
+        <form method="post" action="/articles">
+          <h2>記事を追加</h2>
+          <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+          <label>URL<input type="url" name="url" required placeholder="https://example.com/article" maxlength="4096"></label>
+          <label>タイトル（任意）<input name="title" maxlength="1000"></label>
+          <label>本文・メモ（任意）<textarea name="body" rows="3"></textarea></label>
+          <button>保存する</button>
+        </form>
+      </div>
+    </details>
+  </div>
+</header>
+<main>
+{{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
+{{if .Detail}}
+  <a class="back" href="/">← 一覧へ</a>
+  <article class="reader">
+  {{with .Detail}}
+    <div class="meta"><span>{{.SourceName}}</span><time>{{date .PublishedAt}}</time></div>
+    <h1>{{.Title}}</h1>
+    <div class="actions">
+      <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer">元記事 ↗</a>
+      <form method="post" action="/articles/{{.ID}}/state">
+        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
+        <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
+      </form>
+      <form method="post" action="/articles/{{.ID}}/state">
+        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
+        <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
+      </form>
+    </div>
+    <div class="body">{{if .BodyText}}{{.BodyText}}{{else}}保存された本文はありません。元記事をご覧ください。{{end}}</div>
+  {{end}}
+  </article>
+{{else}}
+
+  <form class="search" method="get" action="/" role="search">
+    <input type="hidden" name="view" value="{{.Filter}}"><input type="hidden" name="feed" value="{{.FeedID}}">
+    <input name="q" type="search" value="{{.Query}}" aria-label="タイトル・本文を検索" placeholder="記事を検索">
+    <button>検索</button>
+  </form>
+
+  <div class="results">
+    <h1>{{if .Query}}「{{.Query}}」の検索結果{{else if eq .Filter "unread"}}未読{{else if eq .Filter "favorites"}}お気に入り{{else if ne .FeedID 0}}{{range .Feeds}}{{if eq $.FeedID .ID}}{{.Title}}{{end}}{{end}}{{else}}すべての記事{{end}}</h1>
+    <span class="muted">{{.Result.Total}}件</span>
+  </div>
+  {{range .Result.Items}}
+  <article class="article {{if .IsRead}}read{{end}}">
+    <h2><a href="/articles/{{.ID}}">{{.Title}}</a></h2>
+    <div class="article-bottom">
+      <div class="meta"><span>{{.SourceName}}</span><time>{{date .PublishedAt}}</time></div>
+      <div class="actions">
+        <form method="post" action="/articles/{{.ID}}/state">
+          <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
+          <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
+        </form>
+        <form method="post" action="/articles/{{.ID}}/state">
+          <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
+          <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
+        </form>
+        <details class="more">
+          <summary aria-label="記事のその他の操作">⋯</summary>
+          <div class="more-panel">
+            <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">元記事 ↗</a>
+            <p>削除すると一覧から非表示になります。</p>
+            <form method="post" action="/articles/{{.ID}}/delete"><input type="hidden" name="return_to" value="{{$.ReturnTo}}"><button>記事を削除</button></form>
+          </div>
+        </details>
+      </div>
+    </div>
+  </article>
+  {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「追加」から登録してください。{{end}}</p>{{end}}
+  {{if gt .Result.Pages 1}}
+  <nav class="pagination" aria-label="ページ送り">
+    <span>{{if .Previous}}<a class="button" href="{{.Previous}}">前へ</a>{{end}}</span>
+    <span class="muted">{{.Result.Page}} / {{.Result.Pages}}</span>
+    <span>{{if .Next}}<a class="button" href="{{.Next}}">次へ</a>{{end}}</span>
+  </nav>
+  {{end}}
+{{end}}
+</main>
+</div>
+</div>
+</body>
+</html>
