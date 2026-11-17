@@ -17,6 +17,8 @@ type Article struct {
 	IsRead, Favorite                                       bool
 	FullBodyHTML, FullBodyText, FullSourceURL              string
 	FullFetchedAt                                          *time.Time
+	FullContentPending                                     bool
+	FullFetchError                                         string
 }
 
 // Query selects articles by text, state, feed and page.
@@ -58,15 +60,15 @@ func (s *Store) Save(ctx context.Context, a Article) error {
 	if !hasPublished {
 		a.PublishedAt = time.Now()
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO articles.entries(source_id,external_id,source_name,url,title,body_text,body_html,published_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(source_id,external_id) DO UPDATE SET source_name=EXCLUDED.source_name,url=EXCLUDED.url,title=EXCLUDED.title,body_text=EXCLUDED.body_text,body_html=EXCLUDED.body_html,published_at=CASE WHEN $9 THEN EXCLUDED.published_at ELSE entries.published_at END,deleted_at=CASE WHEN EXCLUDED.source_id=0 THEN NULL ELSE entries.deleted_at END`, a.SourceID, a.ExternalID, a.SourceName, a.URL, a.Title, a.BodyText, a.BodyHTML, a.PublishedAt, hasPublished)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO articles.entries(source_id,external_id,source_name,url,title,body_text,body_html,published_at,full_next_fetch_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()) ON CONFLICT(source_id,external_id) DO UPDATE SET source_name=EXCLUDED.source_name,url=EXCLUDED.url,title=EXCLUDED.title,body_text=EXCLUDED.body_text,body_html=EXCLUDED.body_html,published_at=CASE WHEN $9 THEN EXCLUDED.published_at ELSE entries.published_at END,deleted_at=CASE WHEN EXCLUDED.source_id=0 THEN NULL ELSE entries.deleted_at END`, a.SourceID, a.ExternalID, a.SourceName, a.URL, a.Title, a.BodyText, a.BodyHTML, a.PublishedAt, hasPublished)
 	return err
 }
 
-const columns = `id,source_id,external_id,source_name,url,title,body_text,body_html,published_at,is_read,favorite,full_body_html,full_body_text,full_source_url,full_fetched_at`
+const columns = `id,source_id,external_id,source_name,url,title,body_text,body_html,published_at,is_read,favorite,full_body_html,full_body_text,full_source_url,full_fetched_at,(full_next_fetch_at IS NOT NULL),full_fetch_error`
 
 func scan(row interface{ Scan(...any) error }) (Article, error) {
 	var a Article
-	err := row.Scan(&a.ID, &a.SourceID, &a.ExternalID, &a.SourceName, &a.URL, &a.Title, &a.BodyText, &a.BodyHTML, &a.PublishedAt, &a.IsRead, &a.Favorite, &a.FullBodyHTML, &a.FullBodyText, &a.FullSourceURL, &a.FullFetchedAt)
+	err := row.Scan(&a.ID, &a.SourceID, &a.ExternalID, &a.SourceName, &a.URL, &a.Title, &a.BodyText, &a.BodyHTML, &a.PublishedAt, &a.IsRead, &a.Favorite, &a.FullBodyHTML, &a.FullBodyText, &a.FullSourceURL, &a.FullFetchedAt, &a.FullContentPending, &a.FullFetchError)
 	return a, err
 }
 
@@ -156,8 +158,65 @@ type FullContent struct{ Title, HTML, Text, URL string }
 // SaveFullContent preserves feed content and reading state when saving extracted content.
 func (s *Store) SaveFullContent(ctx context.Context, id int64, content FullContent) error {
 	result, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET
- full_body_html=$2,full_body_text=$3,full_source_url=$4,full_fetched_at=now(),
+ full_body_html=$2,full_body_text=$3,full_source_url=$4,full_fetched_at=now(),full_next_fetch_at=NULL,full_fetch_until=NULL,full_fetch_error='',
  title=CASE WHEN title=url AND $5<>'' THEN $5 ELSE title END
  WHERE id=$1 AND deleted_at IS NULL`, id, content.HTML, content.Text, content.URL, content.Title)
 	return affected(result, err)
+}
+
+// PendingFullContent returns one bounded batch of articles awaiting extraction.
+func (s *Store) PendingFullContent(ctx context.Context) (items []Article, err error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries
+ WHERE deleted_at IS NULL AND full_next_fetch_at<=now()
+ AND (full_fetch_until IS NULL OR full_fetch_until<=now())
+ ORDER BY full_next_fetch_at,id LIMIT 10`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, rows.Close()) }()
+	for rows.Next() {
+		item, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// ClaimFullContent atomically leases a fetch across worker replicas.
+// An abandoned lease expires after two minutes, without holding a DB transaction during HTTP.
+func (s *Store) ClaimFullContent(ctx context.Context, id int64) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET full_fetch_until=now()+interval '2 minutes'
+ WHERE id=$1 AND deleted_at IS NULL
+ AND (full_fetch_until IS NULL OR full_fetch_until<=now())
+ AND full_next_fetch_at<=now()`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n > 0, err
+}
+
+// FailFullContent releases a lease, retaining saved text and delaying automatic retries.
+func (s *Store) FailFullContent(ctx context.Context, id int64, fetchErr error) error {
+	canceled := errors.Is(fetchErr, context.Canceled)
+	_, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET full_fetch_until=NULL,
+ full_next_fetch_at=CASE WHEN $3 THEN full_next_fetch_at WHEN full_next_fetch_at IS NOT NULL THEN now()+interval '30 minutes' ELSE NULL END,
+ full_fetch_error=CASE WHEN $3 THEN full_fetch_error ELSE $2 END
+ WHERE id=$1`, id, fetchErr.Error(), canceled)
+	return err
+}
+
+// ContentStatus is a lightweight view used while an open article awaits automatic extraction.
+type ContentStatus struct {
+	Pending bool   `json:"pending"`
+	Error   string `json:"error"`
+}
+
+// FullContentStatus reads extraction state without loading the stored article bodies.
+func (s *Store) FullContentStatus(ctx context.Context, id int64) (status ContentStatus, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT full_next_fetch_at IS NOT NULL,full_fetch_error
+ FROM articles.entries WHERE id=$1 AND deleted_at IS NULL`, id).Scan(&status.Pending, &status.Error)
+	return status, err
 }

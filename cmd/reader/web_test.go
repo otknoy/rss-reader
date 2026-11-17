@@ -91,3 +91,12 @@ func TestWorkspaceScript(t *testing.T) {
 		t.Fatalf("script response: %d %v", w.Code, w.Header())
 	}
 }
+
+func TestManualContentFetchRouteRemoved(t *testing.T) {
+	app := &application{}
+	w := httptest.NewRecorder()
+	app.routes().ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/articles/1/fetch-content", nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("manual extraction route still exists: %d", w.Code)
+	}
+}

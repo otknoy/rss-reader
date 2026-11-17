@@ -38,7 +38,7 @@ func TestDetailRendersRichContent(t *testing.T) {
 	w := httptest.NewRecorder()
 	render(w, view{Detail: &articles.Article{ID: 1, URL: "https://example.com/page", Title: "記事", BodyHTML: `<h2>本文見出し</h2><img src="/image.png" onerror="alert(1)">`}})
 	body := w.Body.String()
-	if !strings.Contains(body, "<h2>本文見出し</h2>") || !strings.Contains(body, `src="https://example.com/image.png"`) || !strings.Contains(body, "本文を取得") || strings.Contains(body, "onerror=") {
+	if !strings.Contains(body, "<h2>本文見出し</h2>") || !strings.Contains(body, `src="https://example.com/image.png"`) || strings.Contains(body, "/fetch-content") || strings.Contains(body, "onerror=") {
 		t.Fatalf("unexpected detail HTML: %s", body)
 	}
 }

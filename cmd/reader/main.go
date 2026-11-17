@@ -108,12 +108,19 @@ func run() error {
 		return err
 	}
 	fetcher := ingestion.New(fs, as, interval)
+	scheduledRefresh := func(ctx context.Context) error {
+		feedErr := fetcher.RefreshDue(ctx)
+		if errors.Is(feedErr, feeds.ErrRefreshInProgress) {
+			feedErr = nil
+		}
+		return errors.Join(feedErr, fetcher.RefreshFullContent(ctx, as))
+	}
 	if command == "fetch" {
 		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
 		var err error
 		if len(os.Args) == 3 {
-			err = fetcher.RefreshDue(fetchCtx)
+			err = scheduledRefresh(fetchCtx)
 		} else {
 			err = fetcher.Refresh(fetchCtx)
 		}
@@ -131,7 +138,7 @@ func run() error {
 	workerDone := make(chan struct{})
 	if enabled {
 		log.Printf("automatic feed refresh enabled: base interval=%s, due checks every 1m", interval)
-		go func() { defer close(workerDone); pollFeeds(workerCtx, fetcher.RefreshDue) }()
+		go func() { defer close(workerDone); pollFeeds(workerCtx, scheduledRefresh) }()
 	} else {
 		close(workerDone)
 	}

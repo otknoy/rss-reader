@@ -2,6 +2,8 @@
   "use strict";
 
   let pending;
+  let contentPollTimer;
+  let navigationGeneration = 0;
   let currentContext = contextKey(location.href);
   let mobileListScroll = 0;
 
@@ -29,6 +31,8 @@
   async function navigate(raw, options = {}) {
     const url = new URL(raw, location.href);
     if (url.origin !== location.origin) return;
+    ++navigationGeneration;
+    clearTimeout(contentPollTimer);
     pending?.abort();
     const controller = new AbortController();
     pending = controller;
@@ -105,8 +109,39 @@
     } catch (error) {
       if (error.name !== "AbortError") showError(error.message || "読み込めませんでした。");
     } finally {
-      if (pending === controller) document.querySelector("#reader-pane")?.removeAttribute("aria-busy");
+      if (pending === controller) {
+        document.querySelector("#reader-pane")?.removeAttribute("aria-busy");
+        scheduleContentCheck();
+      }
     }
+  }
+
+  function scheduleContentCheck() {
+    clearTimeout(contentPollTimer);
+    const reader = document.querySelector('.reader[data-content-pending="true"]');
+    if (!reader) return;
+    const id = reader.dataset.readingId;
+    const hadError = reader.dataset.contentError === "true";
+    const generation = navigationGeneration;
+    contentPollTimer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/articles/${id}/content-status`, {
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        });
+        if (generation !== navigationGeneration || selectedID() !== id) return;
+        if (!response.ok) { scheduleContentCheck(); return; }
+        const status = await response.json();
+        if (generation !== navigationGeneration || selectedID() !== id) return;
+        if (!status.pending || Boolean(status.error) !== hadError) {
+          await navigate(location.href, { history: "none", keepReaderScroll: true });
+        } else {
+          scheduleContentCheck();
+        }
+      } catch {
+        if (generation === navigationGeneration && selectedID() === id) scheduleContentCheck();
+      }
+    }, hadError ? 30000 : 5000);
   }
 
   document.addEventListener("click", (event) => {
@@ -138,4 +173,5 @@
   });
 
   addEventListener("popstate", () => void navigate(location.href, { history: "none" }));
+  scheduleContentCheck();
 })();

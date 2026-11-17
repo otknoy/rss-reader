@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"html/template"
 	"log"
@@ -66,7 +67,7 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /refresh", a.refresh)
 	mux.HandleFunc("POST /articles", a.addArticle)
 	mux.HandleFunc("POST /articles/{id}/state", a.state)
-	mux.HandleFunc("POST /articles/{id}/fetch-content", a.fetchContent)
+	mux.HandleFunc("GET /articles/{id}/content-status", a.contentStatus)
 	mux.HandleFunc("POST /articles/{id}/delete", a.deleteArticle)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
@@ -185,10 +186,6 @@ func (a *application) base(r *http.Request) (view, error) {
 		message = "記事を更新しました"
 	case "fetch-error":
 		message = "取得できなかったフィードがあります。「購読フィード」の取得状況をご確認ください。"
-	case "content-saved":
-		message = "本文を取得しました"
-	case "content-error":
-		message = "本文を取得できませんでした。元記事でご確認ください。"
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
@@ -326,31 +323,6 @@ func (a *application) deleteArticle(w http.ResponseWriter, r *http.Request) {
 	redirect(w, r, "")
 }
 
-func (a *application) fetchContent(w http.ResponseWriter, r *http.Request) {
-	n, err := id(r)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	item, err := a.articles.Get(r.Context(), n)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	content, err := a.fetcher.FetchArticle(r.Context(), item.URL)
-	target := articleURL(returnTo(r), n)
-	if err != nil {
-		log.Printf("fetch article %d: %v", n, err)
-		http.Redirect(w, r, withMessage(target, "content-error"), http.StatusSeeOther)
-		return
-	}
-	if err := a.articles.SaveFullContent(r.Context(), n, content); err != nil {
-		fail(w, err)
-		return
-	}
-	http.Redirect(w, r, withMessage(target, "content-saved"), http.StatusSeeOther)
-}
-
 // articleURL keeps the current list context while changing the selected article.
 func articleURL(listURL string, id int64) string {
 	u, err := url.Parse(listURL)
@@ -370,10 +342,23 @@ func articleURL(listURL string, id int64) string {
 	return "/?" + q.Encode()
 }
 
-func withMessage(target, message string) string {
-	u, _ := url.Parse(target)
-	q := u.Query()
-	q.Set("message", message)
-	u.RawQuery = q.Encode()
-	return u.String()
+func (a *application) contentStatus(w http.ResponseWriter, r *http.Request) {
+	n, err := id(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	status, err := a.articles.FullContentStatus(r.Context(), n)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	// Keep upstream error details in storage; the UI only needs to know whether a retry is pending.
+	if status.Error != "" {
+		status.Error = "本文の自動取得に失敗しました。後で再試行します。"
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		log.Printf("write content status: %v", err)
+	}
 }
