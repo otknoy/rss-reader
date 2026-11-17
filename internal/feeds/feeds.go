@@ -3,7 +3,9 @@ package feeds
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -11,12 +13,15 @@ import (
 
 // Feed describes a subscription and its persisted fetch metadata.
 type Feed struct {
-	ID                    int64
-	URL, Title, LastError string
-	CheckedAt             *time.Time
+	ID                         int64
+	URL, Title, LastError      string
+	CheckedAt                  *time.Time
+	NextFetchAt, LastSuccessAt *time.Time
+	TTLMinutes                 int64
+	ETag, LastModified         string
 }
 
-// Store persists feed subscriptions and fetch metadata.
+// Store persists feed subscriptions and fetch schedules.
 type Store struct{ db *sql.DB }
 
 // New creates a subscription store.
@@ -37,7 +42,7 @@ func (s *Store) Add(ctx context.Context, raw string) error {
 	if err := ValidateURL(raw); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO feeds.subscriptions (url,title) VALUES ($1,$1) ON CONFLICT(url) DO UPDATE SET active=true`, raw)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO feeds.subscriptions (url,title) VALUES ($1,$1) ON CONFLICT(url) DO UPDATE SET active=true,next_fetch_at=CASE WHEN feeds.subscriptions.active THEN feeds.subscriptions.next_fetch_at ELSE NULL END`, raw)
 	return err
 }
 
@@ -58,15 +63,26 @@ func (s *Store) Remove(ctx context.Context, id int64) error {
 }
 
 // List returns active subscriptions.
-func (s *Store) List(ctx context.Context) (out []Feed, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,url,title,checked_at,last_error FROM feeds.subscriptions WHERE active ORDER BY id`)
+func (s *Store) List(ctx context.Context) ([]Feed, error) {
+	return s.list(ctx, false)
+}
+
+// ListDue returns active subscriptions whose next fetch is due.
+func (s *Store) ListDue(ctx context.Context) ([]Feed, error) {
+	return s.list(ctx, true)
+}
+
+func (s *Store) list(ctx context.Context, dueOnly bool) (out []Feed, err error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,url,title,checked_at,last_error,ttl_minutes,next_fetch_at,last_success_at,etag,last_modified
+ FROM feeds.subscriptions WHERE active AND (NOT $1 OR next_fetch_at IS NULL OR next_fetch_at<=now())
+ ORDER BY next_fetch_at NULLS FIRST,id`, dueOnly)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var f Feed
-		if err := rows.Scan(&f.ID, &f.URL, &f.Title, &f.CheckedAt, &f.LastError); err != nil {
+		if err := rows.Scan(&f.ID, &f.URL, &f.Title, &f.CheckedAt, &f.LastError, &f.TTLMinutes, &f.NextFetchAt, &f.LastSuccessAt, &f.ETag, &f.LastModified); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -74,14 +90,63 @@ func (s *Store) List(ctx context.Context) (out []Feed, err error) {
 	return out, rows.Err()
 }
 
-// Record saves the outcome of a feed fetch.
-func (s *Store) Record(ctx context.Context, id int64, title string, fetchErr error) error {
+// FetchResult carries metadata only after the full response has been saved.
+// On failure the caller supplies the previously saved metadata.
+type FetchResult struct {
+	Title, ETag, LastModified string
+	TTLMinutes                int64
+	Err                       error
+}
+
+// Record saves fetch metadata and schedules the next attempt.
+func (s *Store) Record(ctx context.Context, id int64, result FetchResult, interval time.Duration) error {
 	message := ""
-	if fetchErr != nil {
-		message = fetchErr.Error()
+	if result.Err != nil {
+		message = result.Err.Error()
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE feeds.subscriptions SET checked_at=now(),last_error=$2,title=CASE WHEN $3='' THEN title ELSE $3 END WHERE id=$1`, id, message, title)
+	_, err := s.db.ExecContext(ctx, `UPDATE feeds.subscriptions SET
+ checked_at=now(),last_error=$2,title=CASE WHEN $3='' THEN title ELSE $3 END,
+	 ttl_minutes=$4::bigint,etag=$5,last_modified=$6,
+	 next_fetch_at=now()+make_interval(secs=>GREATEST($7::double precision,$4::bigint::double precision*60)),
+ last_success_at=CASE WHEN $8 THEN now() ELSE last_success_at END
+ WHERE id=$1`, id, message, result.Title, result.TTLMinutes, result.ETag, result.LastModified, interval.Seconds(), result.Err == nil)
 	return err
+}
+
+// ErrRefreshInProgress indicates another process holds the refresh lock.
+var ErrRefreshInProgress = errors.New("feed refresh already in progress")
+
+// WithRefreshLock coordinates web, background polling and one-shot commands.
+// A session lock needs a dedicated connection; never return a locked connection to the pool.
+func (s *Store) WithRefreshLock(ctx context.Context, run func() error) (err error) {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, conn.Close()) }()
+	var locked bool
+	if err = conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock(7221902)`).Scan(&locked); err != nil {
+		// A canceled query may have acquired the lock before its result was lost.
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		return err
+	}
+	if !locked {
+		return ErrRefreshInProgress
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		var unlocked bool
+		unlockErr := conn.QueryRowContext(cleanup, `SELECT pg_advisory_unlock(7221902)`).Scan(&unlocked)
+		if unlockErr != nil || !unlocked {
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+			if unlockErr == nil {
+				unlockErr = errors.New("refresh lock was lost")
+			}
+			err = errors.Join(err, fmt.Errorf("release refresh lock: %w", unlockErr))
+		}
+	}()
+	return run()
 }
 
 // Ping checks connectivity to the subscription database.

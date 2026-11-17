@@ -154,7 +154,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
           <input type="hidden" name="return_to" value="{{.ReturnTo}}">
           <label>RSS / Atom URL<input type="url" name="url" required placeholder="https://example.com/feed.xml" maxlength="4096"></label>
           <button>購読する</button>
-          <p class="hint">登録後に「更新」で記事を取得します。</p>
+          <p class="hint">自動で記事を取得します。すぐに取得する場合は「更新」を押してください。</p>
         </form>
         <hr>
         <form method="post" action="/articles">

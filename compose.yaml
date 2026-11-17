@@ -43,6 +43,8 @@ services:
       FEEDS_DATABASE_URL: postgres://feeds_app:${FEEDS_PASSWORD:-local-feeds}@db:5432/reader?sslmode=disable
       ARTICLES_DATABASE_URL: postgres://articles_app:${ARTICLES_PASSWORD:-local-articles}@db:5432/reader?sslmode=disable
       LISTEN_ADDR: :8080
+      AUTO_REFRESH: ${AUTO_REFRESH:-true}
+      FETCH_INTERVAL: ${FETCH_INTERVAL:-30m}
     ports:
       - "127.0.0.1:${PORT:-8080}:8080"
     depends_on:

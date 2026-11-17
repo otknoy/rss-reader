@@ -15,7 +15,6 @@ import (
 	"rss-reader/internal/search"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -34,11 +33,10 @@ var page = template.Must(template.New("page").Funcs(template.FuncMap{
 }).Parse(pageHTML))
 
 type application struct {
-	feeds     *feeds.Store
-	articles  *articles.Store
-	search    *search.Service
-	fetcher   *ingestion.Service
-	refreshMu sync.Mutex
+	feeds    *feeds.Store
+	articles *articles.Store
+	search   *search.Service
+	fetcher  *ingestion.Service
 }
 type view struct {
 	Feeds                                            []feeds.Feed
@@ -235,13 +233,12 @@ func (a *application) removeFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) refresh(w http.ResponseWriter, r *http.Request) {
-	if !a.refreshMu.TryLock() {
-		http.Error(w, "取得処理を実行中です。しばらくお待ちください。", http.StatusConflict)
-		return
-	}
-	defer a.refreshMu.Unlock()
 	message := "updated"
 	if err := a.fetcher.Refresh(r.Context()); err != nil {
+		if errors.Is(err, feeds.ErrRefreshInProgress) {
+			http.Error(w, "取得処理を実行中です。しばらくお待ちください。", http.StatusConflict)
+			return
+		}
 		log.Printf("fetch: %v", err)
 		message = "fetch-error"
 	}

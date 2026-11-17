@@ -33,10 +33,11 @@ func TestParseFeeds(t *testing.T) {
 		`<rss version="2.0"><channel><title>購読</title><link>https://example.com</link><description>test</description><item><guid>stable-id</guid><title>記事</title><link>/entry</link><description>&lt;p&gt;日本語検索&lt;/p&gt;</description></item></channel></rss>`,
 		`<feed xmlns="http://www.w3.org/2005/Atom"><title>購読</title><id>feed-id</id><entry><id>stable-id</id><title>記事</title><link href="/entry"/><content type="html">&lt;p&gt;日本語検索&lt;/p&gt;</content></entry></feed>`,
 	} {
-		title, items, err := parseFeed([]byte(raw), base, feeds.Feed{ID: 7})
+		parsed, err := parseFeed([]byte(raw), base, feeds.Feed{ID: 7})
 		if err != nil {
 			t.Fatal(err)
 		}
+		title, items := parsed.Title, parsed.Items
 		if title != "購読" || len(items) != 1 {
 			t.Fatalf("title=%s items=%v", title, items)
 		}
@@ -45,7 +46,7 @@ func TestParseFeeds(t *testing.T) {
 			t.Fatalf("unexpected article: %+v", a)
 		}
 	}
-	if _, _, err := parseFeed([]byte("not a feed"), base, feeds.Feed{}); err == nil {
+	if _, err := parseFeed([]byte("not a feed"), base, feeds.Feed{}); err == nil {
 		t.Fatal("invalid feed accepted")
 	}
 }

@@ -11,23 +11,43 @@ import (
 	"net/url"
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mmcdole/gofeed/rss"
 
 	"github.com/mmcdole/gofeed"
 	"golang.org/x/net/html"
 )
 
+// DefaultInterval is the fallback interval between feed fetches.
+const DefaultInterval = 30 * time.Minute
+
+type subscriptions interface {
+	List(context.Context) ([]feeds.Feed, error)
+	ListDue(context.Context) ([]feeds.Feed, error)
+	Record(context.Context, int64, feeds.FetchResult, time.Duration) error
+	WithRefreshLock(context.Context, func() error) error
+}
+type articleWriter interface {
+	Save(context.Context, articles.Article) error
+}
+
 // Service fetches subscriptions and saves their articles.
 type Service struct {
-	feeds    *feeds.Store
-	articles *articles.Store
+	feeds    subscriptions
+	articles articleWriter
 	client   *http.Client
+	interval time.Duration
 }
 
 // New creates a feed ingestion service with a public-network HTTP client.
-func New(f *feeds.Store, a *articles.Store) *Service {
-	return &Service{feeds: f, articles: a, client: PublicClient()}
+func New(f subscriptions, a articleWriter, interval time.Duration) *Service {
+	if interval <= 0 {
+		interval = DefaultInterval
+	}
+	return &Service{feeds: f, articles: a, client: PublicClient(), interval: interval}
 }
 
 // PublicClient checks every resolved address at connection time, including redirects.
@@ -75,66 +95,119 @@ func publicIP(ip netip.Addr) bool {
 	return true
 }
 
-// Refresh fetches all active subscriptions and saves their articles.
-func (s *Service) Refresh(ctx context.Context) error {
-	list, err := s.feeds.List(ctx)
-	if err != nil {
-		return err
-	}
-	var failures []error
-	for _, f := range list {
-		if err := ctx.Err(); err != nil {
-			return errors.Join(append(failures, err)...)
+// Refresh is an explicit manual refresh; it bypasses the due time but uses conditional HTTP.
+func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, false) }
+
+// RefreshDue performs one scheduled pass, shared by web polling and future CronJobs.
+func (s *Service) RefreshDue(ctx context.Context) error { return s.refresh(ctx, true) }
+
+func (s *Service) refresh(ctx context.Context, dueOnly bool) error {
+	return s.feeds.WithRefreshLock(ctx, func() error {
+		var list []feeds.Feed
+		var err error
+		if dueOnly {
+			list, err = s.feeds.ListDue(ctx)
+		} else {
+			list, err = s.feeds.List(ctx)
 		}
-		title, fetchErr := s.fetch(ctx, f)
-		if err := s.feeds.Record(ctx, f.ID, title, fetchErr); err != nil {
-			failures = append(failures, err)
+		if err != nil {
+			return err
 		}
-		if fetchErr != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", f.Title, fetchErr))
+		var failures []error
+		for _, f := range list {
+			if err := ctx.Err(); err != nil {
+				return errors.Join(append(failures, err)...)
+			}
+			result := s.fetch(ctx, f)
+			if err := s.feeds.Record(ctx, f.ID, result, s.interval); err != nil {
+				failures = append(failures, err)
+			}
+			if result.Err != nil {
+				failures = append(failures, fmt.Errorf("%s: %w", f.Title, result.Err))
+			}
 		}
-	}
-	return errors.Join(failures...)
+		return errors.Join(failures...)
+	})
 }
 
-func (s *Service) fetch(ctx context.Context, f feeds.Feed) (title string, err error) {
+func (s *Service) fetch(ctx context.Context, f feeds.Feed) (result feeds.FetchResult) {
+	result = feeds.FetchResult{Title: f.Title, TTLMinutes: f.TTLMinutes, ETag: f.ETag, LastModified: f.LastModified}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.URL, nil)
 	if err != nil {
-		return "", err
+		result.Err = err
+		return
 	}
 	req.Header.Set("User-Agent", "PersonalRSSReader/0.1")
+	if f.ETag != "" {
+		req.Header.Set("If-None-Match", f.ETag)
+	}
+	if f.LastModified != "" {
+		req.Header.Set("If-Modified-Since", f.LastModified)
+	}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return "", err
+		result.Err = err
+		return
 	}
-	defer func() { err = errors.Join(err, resp.Body.Close()) }()
+	defer func() { result.Err = errors.Join(result.Err, resp.Body.Close()) }()
+	if resp.StatusCode == http.StatusNotModified {
+		if value := resp.Header.Get("ETag"); value != "" {
+			result.ETag = value
+		}
+		if value := resp.Header.Get("Last-Modified"); value != "" {
+			result.LastModified = value
+		}
+		return
+	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+		result.Err = fmt.Errorf("HTTP %d", resp.StatusCode)
+		return
 	}
 	const maxFeedBytes = 4 << 20
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
 	if err != nil {
-		return "", err
+		result.Err = err
+		return
 	}
 	if len(raw) > maxFeedBytes {
-		return "", errors.New("フィードが4MBを超えています")
+		result.Err = errors.New("フィードが4MBを超えています")
+		return
 	}
-	title, items, err := parseFeed(raw, resp.Request.URL, f)
+	parsed, err := parseFeed(raw, resp.Request.URL, f)
 	if err != nil {
-		return "", err
+		result.Err = err
+		return
 	}
-	for _, item := range items {
+	for _, item := range parsed.Items {
 		if err := s.articles.Save(ctx, item); err != nil {
-			return title, err
+			result.Err = err
+			return
 		}
 	}
-	return title, nil
+	return feeds.FetchResult{Title: parsed.Title, TTLMinutes: parsed.TTLMinutes, ETag: resp.Header.Get("ETag"), LastModified: resp.Header.Get("Last-Modified")}
 }
 
-func parseFeed(raw []byte, base *url.URL, f feeds.Feed) (string, []articles.Article, error) {
-	parsed, err := gofeed.NewParser().ParseString(string(raw))
+type parsedFeed struct {
+	Title      string
+	Items      []articles.Article
+	TTLMinutes int64
+}
+
+// Invalid or unrepresentable TTLs fall back to the configured interval.
+func parseTTL(raw string) int64 {
+	minutes, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || minutes <= 0 || minutes > int64((1<<63-1)/time.Minute) {
+		return 0
+	}
+	return minutes
+}
+
+func parseFeed(raw []byte, base *url.URL, f feeds.Feed) (parsedFeed, error) {
+	parser := gofeed.NewParser()
+	parser.KeepOriginalFeed = true
+	parsed, err := parser.ParseString(string(raw))
 	if err != nil {
-		return "", nil, errors.New("RSS / Atomを解析できませんでした")
+		return parsedFeed{}, errors.New("RSS / Atomを解析できませんでした")
 	}
 	title := PlainText(parsed.Title)
 	if title == "" {
@@ -170,7 +243,11 @@ func parseFeed(raw []byte, base *url.URL, f feeds.Feed) (string, []articles.Arti
 		}
 		items = append(items, articles.Article{SourceID: f.ID, SourceName: title, ExternalID: key, URL: link, Title: PlainText(item.Title), BodyHTML: body, BodyText: PlainText(body), PublishedAt: published})
 	}
-	return title, items, nil
+	ttl := int64(0)
+	if original, ok := parsed.OriginalFeed().(*rss.Feed); ok {
+		ttl = parseTTL(original.TTL)
+	}
+	return parsedFeed{Title: title, Items: items, TTLMinutes: ttl}, nil
 }
 
 // PlainText extracts readable text without executing or rendering feed HTML.

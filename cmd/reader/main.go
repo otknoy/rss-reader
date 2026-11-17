@@ -75,7 +75,10 @@ func run() error {
 		return nil
 	}
 	if command != "web" && command != "fetch" && command != "migrate" {
-		return errors.New("usage: reader [web|fetch|migrate|healthcheck]")
+		return errors.New("usage: reader [web|fetch [--due]|migrate|healthcheck]")
+	}
+	if len(os.Args) > 2 && (command != "fetch" || len(os.Args) != 3 || os.Args[2] != "--due") {
+		return errors.New("only fetch accepts --due")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -100,12 +103,39 @@ func run() error {
 	}
 	defer closeResource(adb)
 	fs, as := feeds.New(fdb), articles.New(adb)
-	fetcher := ingestion.New(fs, as)
+	interval, err := refreshInterval(os.Getenv("FETCH_INTERVAL"))
+	if err != nil {
+		return err
+	}
+	fetcher := ingestion.New(fs, as, interval)
 	if command == "fetch" {
 		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
-		return fetcher.Refresh(fetchCtx)
+		var err error
+		if len(os.Args) == 3 {
+			err = fetcher.RefreshDue(fetchCtx)
+		} else {
+			err = fetcher.Refresh(fetchCtx)
+		}
+		if errors.Is(err, feeds.ErrRefreshInProgress) {
+			log.Print("feed refresh skipped: already running")
+			return nil
+		}
+		return err
 	}
+	enabled, err := autoRefreshEnabled(os.Getenv("AUTO_REFRESH"))
+	if err != nil {
+		return err
+	}
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	if enabled {
+		log.Printf("automatic feed refresh enabled: base interval=%s, due checks every 1m", interval)
+		go func() { defer close(workerDone); pollFeeds(workerCtx, fetcher.RefreshDue) }()
+	} else {
+		close(workerDone)
+	}
+	defer func() { stopWorker(); <-workerDone }()
 	app := &application{feeds: fs, articles: as, search: search.New(as), fetcher: fetcher}
 	addr := os.Getenv("LISTEN_ADDR")
 	if addr == "" {

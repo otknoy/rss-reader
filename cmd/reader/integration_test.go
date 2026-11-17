@@ -96,6 +96,87 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err != nil || len(list) != 1 {
 		t.Fatalf("feeds=%v, err=%v", list, err)
 	}
+	t.Run("durable TTL schedule", func(t *testing.T) {
+		feedID := list[0].ID
+		for _, tc := range []struct {
+			ttl   int64
+			delay time.Duration
+		}{{60, time.Hour}, {10, 30 * time.Minute}, {0, 30 * time.Minute}} {
+			metadata := feeds.FetchResult{Title: "scheduled", TTLMinutes: tc.ttl, ETag: `"v1"`, LastModified: "Mon, 16 Nov 2026 00:00:00 GMT"}
+			if err := fs.Record(ctx, feedID, metadata, 30*time.Minute); err != nil {
+				t.Fatal(err)
+			}
+			// A fresh store / connection sees the persisted due time, as after a restart.
+			restarted := feeds.New(connect(os.Getenv("FEEDS_DATABASE_URL")))
+			recorded, err := restarted.List(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := recorded[0]
+			if f.CheckedAt == nil || f.NextFetchAt == nil || f.LastSuccessAt == nil || f.TTLMinutes != tc.ttl || f.NextFetchAt.Sub(*f.CheckedAt) != tc.delay {
+				t.Fatalf("bad schedule: %+v", f)
+			}
+			if due, err := restarted.ListDue(ctx); err != nil || len(due) != 0 {
+				t.Fatalf("fetched too early: %v %v", due, err)
+			}
+			if err := fs.Add(ctx, f.URL); err != nil {
+				t.Fatal(err)
+			}
+			if due, err := fs.ListDue(ctx); err != nil || len(due) != 0 {
+				t.Fatalf("duplicate subscription reset due time: %v %v", due, err)
+			}
+			metadata.Err = errors.New("temporary fetch failure")
+			if err := fs.Record(ctx, feedID, metadata, 30*time.Minute); err != nil {
+				t.Fatal(err)
+			}
+			failed, err := fs.List(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failed[0].LastError == "" || !failed[0].LastSuccessAt.Equal(*f.LastSuccessAt) || failed[0].NextFetchAt.Sub(*failed[0].CheckedAt) != tc.delay {
+				t.Fatalf("failure lost schedule or success state: %+v", failed[0])
+			}
+		}
+		if _, err := owner.ExecContext(ctx, `UPDATE feeds.subscriptions SET next_fetch_at=now()-interval '1 second' WHERE id=$1`, feedID); err != nil {
+			t.Fatal(err)
+		}
+		if due, err := fs.ListDue(ctx); err != nil || len(due) != 1 {
+			t.Fatalf("due feed missing: %v %v", due, err)
+		}
+		if err := fs.Remove(ctx, feedID); err != nil {
+			t.Fatal(err)
+		}
+		if due, err := fs.ListDue(ctx); err != nil || len(due) != 0 {
+			t.Fatalf("inactive feed scheduled: %v %v", due, err)
+		}
+		if err := fs.Add(ctx, list[0].URL); err != nil {
+			t.Fatal(err)
+		}
+		if due, err := fs.ListDue(ctx); err != nil || len(due) != 1 {
+			t.Fatalf("resubscription not scheduled: %v %v", due, err)
+		}
+	})
+	t.Run("cross-process refresh lock", func(t *testing.T) {
+		other := feeds.New(connect(os.Getenv("FEEDS_DATABASE_URL")))
+		canceled, cancelLock := context.WithCancel(ctx)
+		defer cancelLock()
+		callbackErr := errors.New("fetch failed")
+		err := fs.WithRefreshLock(canceled, func() error {
+			called := false
+			if err := other.WithRefreshLock(ctx, func() error { called = true; return nil }); !errors.Is(err, feeds.ErrRefreshInProgress) || called {
+				t.Fatalf("overlapping refresh allowed: %v", err)
+			}
+			cancelLock()
+			return callbackErr
+		})
+		if !errors.Is(err, callbackErr) {
+			t.Fatalf("callback error lost: %v", err)
+		}
+		if err := other.WithRefreshLock(ctx, func() error { return nil }); err != nil {
+			t.Fatalf("lock leaked after canceled/error run: %v", err)
+		}
+	})
+
 	article := articles.Article{SourceID: list[0].ID, ExternalID: "entry-1", SourceName: "テスト購読", URL: "https://example.com/one", Title: "Goの記事", BodyText: "日本語の全文検索 100% foo_bar"}
 	if err := as.Save(ctx, article); err != nil {
 		t.Fatal(err)
@@ -131,7 +212,7 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err != nil || r.Total != 0 {
 		t.Fatalf("unexpected match: %+v %v", r, err)
 	}
-	app := &application{feeds: fs, articles: as, search: search.New(as), fetcher: ingestion.New(fs, as)}
+	app := &application{feeds: fs, articles: as, search: search.New(as), fetcher: ingestion.New(fs, as, ingestion.DefaultInterval)}
 	request := func(method, path string, form url.Values) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, path, strings.NewReader(form.Encode()))
