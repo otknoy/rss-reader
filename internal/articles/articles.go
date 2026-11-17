@@ -15,6 +15,8 @@ type Article struct {
 	ExternalID, SourceName, URL, Title, BodyText, BodyHTML string
 	PublishedAt                                            time.Time
 	IsRead, Favorite                                       bool
+	FullBodyHTML, FullBodyText, FullSourceURL              string
+	FullFetchedAt                                          *time.Time
 }
 
 // Query selects articles by text, state, feed and page.
@@ -60,11 +62,11 @@ func (s *Store) Save(ctx context.Context, a Article) error {
 	return err
 }
 
-const columns = `id,source_id,external_id,source_name,url,title,body_text,body_html,published_at,is_read,favorite`
+const columns = `id,source_id,external_id,source_name,url,title,body_text,body_html,published_at,is_read,favorite,full_body_html,full_body_text,full_source_url,full_fetched_at`
 
 func scan(row interface{ Scan(...any) error }) (Article, error) {
 	var a Article
-	err := row.Scan(&a.ID, &a.SourceID, &a.ExternalID, &a.SourceName, &a.URL, &a.Title, &a.BodyText, &a.BodyHTML, &a.PublishedAt, &a.IsRead, &a.Favorite)
+	err := row.Scan(&a.ID, &a.SourceID, &a.ExternalID, &a.SourceName, &a.URL, &a.Title, &a.BodyText, &a.BodyHTML, &a.PublishedAt, &a.IsRead, &a.Favorite, &a.FullBodyHTML, &a.FullBodyText, &a.FullSourceURL, &a.FullFetchedAt)
 	return a, err
 }
 
@@ -116,7 +118,7 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	}
 	// Escape LIKE metacharacters so user queries are literal substring searches.
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(q.Text)) + "%"
-	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='favorites' AND favorite))`
+	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR full_body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='favorites' AND favorite))`
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM articles.entries`+where, pattern, q.FeedID, q.View).Scan(&r.Total); err != nil {
 		return r, err
 	}
@@ -147,3 +149,15 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 
 // Ping checks connectivity to the article database.
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
+// FullContent is a readable version of the original page, kept separately from the feed.
+type FullContent struct{ Title, HTML, Text, URL string }
+
+// SaveFullContent preserves feed content and reading state when saving extracted content.
+func (s *Store) SaveFullContent(ctx context.Context, id int64, content FullContent) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET
+ full_body_html=$2,full_body_text=$3,full_source_url=$4,full_fetched_at=now(),
+ title=CASE WHEN title=url AND $5<>'' THEN $5 ELSE title END
+ WHERE id=$1 AND deleted_at IS NULL`, id, content.HTML, content.Text, content.URL, content.Title)
+	return affected(result, err)
+}

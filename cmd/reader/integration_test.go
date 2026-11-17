@@ -199,6 +199,21 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err != nil || !saved.IsRead || !saved.Favorite {
 		t.Fatalf("state lost: %+v, %v", saved, err)
 	}
+	full := articles.FullContent{Title: "取得した記事", HTML: `<h2>全文</h2><p>全文だけのキーワード</p><img src="/photo.jpg">`, Text: "全文だけのキーワード", URL: "https://example.com/one"}
+	if err := as.SaveFullContent(ctx, articleID, full); err != nil {
+		t.Fatal(err)
+	}
+	// RSS refresh must not erase an explicitly fetched full article.
+	if err := as.Save(ctx, article); err != nil {
+		t.Fatal(err)
+	}
+	complete, err := as.Get(ctx, articleID)
+	if err != nil || complete.FullBodyHTML != full.HTML || complete.FullFetchedAt == nil || complete.BodyText != article.BodyText || !complete.IsRead || !complete.Favorite {
+		t.Fatalf("full content or state lost: %+v %v", complete, err)
+	}
+	if found, err := as.Search(ctx, articles.Query{Text: full.Text}); err != nil || found.Total != 1 {
+		t.Fatalf("full article is not searchable: %+v %v", found, err)
+	}
 	if err := fs.Remove(ctx, list[0].ID); err != nil {
 		t.Fatal(err)
 	}
@@ -224,8 +239,15 @@ func TestPrototypeIntegration(t *testing.T) {
 	if w := request("GET", "/?q=日本語", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "更新された記事") {
 		t.Fatalf("search HTTP: %d %s", w.Code, w.Body.String())
 	}
-	if w := request("GET", fmt.Sprintf("/articles/%d", articleID), nil); w.Code != 200 || !strings.Contains(w.Body.String(), "100%") {
+	if w := request("GET", fmt.Sprintf("/articles/%d", articleID), nil); w.Code != 200 || !strings.Contains(w.Body.String(), full.Text) {
 		t.Fatalf("detail HTTP: %d", w.Code)
+	}
+	selection := fmt.Sprintf("/?article=%d&q=日本語&feed=%d", articleID, article.SourceID)
+	if w := request("GET", selection, nil); w.Code != 200 || !strings.Contains(w.Body.String(), `data-reading-id="`+fmt.Sprint(articleID)+`"`) || !strings.Contains(w.Body.String(), `id="list-pane"`) {
+		t.Fatalf("workspace selection: %d %s", w.Code, w.Body.String())
+	}
+	if w := request("GET", "/?article=invalid", nil); w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid selection status: %d", w.Code)
 	}
 	if w := request("POST", "/articles", url.Values{"url": {"https://example.com/manual"}, "title": {"手動登録記事"}, "body": {"保存した本文"}}); w.Code != 303 {
 		t.Fatalf("manual add HTTP: %d %s", w.Code, w.Body.String())
@@ -236,7 +258,7 @@ func TestPrototypeIntegration(t *testing.T) {
 	if w := request("GET", "/?view=unread", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "更新された記事") {
 		t.Fatalf("unread HTTP: %d", w.Code)
 	}
-	if w := request("POST", fmt.Sprintf("/articles/%d/delete", articleID), url.Values{}); w.Code != 303 {
+	if w := request("POST", fmt.Sprintf("/articles/%d/delete", articleID), url.Values{"return_to": {selection}}); w.Code != 303 || strings.Contains(w.Header().Get("Location"), "article=") || !strings.Contains(w.Header().Get("Location"), "feed=") {
 		t.Fatalf("delete HTTP: %d", w.Code)
 	}
 	if err := as.Save(ctx, article); err != nil {

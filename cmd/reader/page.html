@@ -29,9 +29,24 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 textarea { resize: vertical; }
 form { margin: 0; }
 summary { cursor: pointer; }
-.shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100dvh; }
+.shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100dvh; overflow: hidden; }
 .sidebar { position: sticky; top: 0; height: 100dvh; overflow-y: auto; padding: 28px 20px; background: #181b1d; border-right: 1px solid var(--line); }
-.content { min-width: 0; width: 100%; max-width: 1040px; margin: 0 auto; padding: 28px 32px 48px; }
+.workspace { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); min-width: 0; height: 100dvh; }
+.list-pane { min-width: 0; height: 100dvh; overflow-y: auto; padding: 24px 20px 48px; border-right: 1px solid var(--line); }
+.reader-pane { min-width: 0; height: 100dvh; overflow-y: auto; padding: 24px 36px 64px; }
+.reader-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.reader-placeholder { display: grid; place-items: center; height: 100%; color: var(--muted); }
+.list-pane header { position: relative; }
+.list-pane .add { position: static; }
+.list-pane .add-panel { left: 0; right: 0; width: auto; }
+.article.selected { background: #222b26; border-left: 2px solid var(--accent); padding-left: 10px; }
+.article[aria-busy="true"] { opacity: .6; }
+.workspace-error { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: calc(100vw - 32px); padding: 12px 18px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: #f0a69c; }
+.list-pane .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
+.list-pane .article { position: relative; }
+.list-pane .article h2 { font-size: 14px; }
+.list-pane .more { position: static; }
+.list-pane .more-panel { left: 8px; right: 8px; top: calc(100% - 8px); width: auto; }
 .heading { margin: 0; font-size: 18px; font-weight: 500; }
 .sidebar .brand { display: inline-block; margin-bottom: 28px; }
 .sidebar .filters { flex-direction: column; gap: 4px; border: 0; margin-bottom: 30px; }
@@ -94,34 +109,62 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
 .reader { max-width: 720px; margin: 24px auto; }
 .reader h1 { font-size: 26px; line-height: 1.65; margin: 14px 0 20px; overflow-wrap: anywhere; }
-.body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 2; margin-top: 32px; }
+.body { overflow-wrap: anywhere; line-height: 1.95; margin-top: 32px; font-size: 16px; }
+.body.plain { white-space: pre-wrap; }
+.body p, .body ul, .body ol, .body blockquote, .body figure, .body pre { margin: 1.3em 0; }
+.body img { display: block; max-width: 100%; height: auto; border-radius: 5px; margin: 18px auto; }
+.body a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.body h2, .body h3, .body h4 { line-height: 1.5; margin: 1.8em 0 .7em; }
+.body h2 { font-size: 23px; } .body h3 { font-size: 20px; }
+.body blockquote { border-left: 3px solid var(--line); padding-left: 18px; color: var(--muted); }
+.body pre { overflow-x: auto; padding: 16px; border-radius: 5px; background: var(--surface); line-height: 1.6; }
+.body code { font-size: .9em; background: var(--surface); padding: 2px 4px; }
+.body pre code { padding: 0; }
+.body figcaption { text-align: center; font-size: 12px; color: var(--muted); }
+.body table { display: block; overflow-x: auto; border-collapse: collapse; max-width: 100%; }
+.body th, .body td { border: 1px solid var(--line); padding: 8px 12px; }
+.body hr { border: 0; border-top: 1px solid var(--line); }
+.content-source { margin-top: 16px; }
 .back { color: var(--muted); font-size: 13px; }
+@media (max-width: 900px) {
+ .workspace { display: block; }
+ .reader-pane { display: none; }
+ .has-detail .reader-pane { display: block; }
+ .has-detail .list-pane { display: none; }
+}
 @media (max-width: 600px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
+  .workspace { height: auto; }
+  .list-pane { height: auto; min-height: 60dvh; overflow: visible; padding: 20px 16px 32px; }
+  .reader-pane { padding: 20px 16px 32px; }
+  .has-detail .sidebar { display: none; }
+  .has-detail .workspace, .has-detail .reader-pane { height: 100dvh; }
+  .reader-toolbar { margin-bottom: 16px; }
   .sidebar { position: static; height: auto; padding: 18px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
   .sidebar .brand { margin-bottom: 12px; }
   .sidebar .filters { flex-direction: row; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
   .sidebar .filters a { gap: 6px; padding: 4px 8px; }
   .sidebar .feed-list { max-height: 180px; overflow-y: auto; }
-  .content { padding: 20px 16px 32px; }
+
   header { margin-bottom: 18px; }
   .header-actions { gap: 8px; }
   .filters { gap: 20px; font-size: 13px; }
   .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
   .article h2 { font-size: 15px; }
   .reader h1 { font-size: 22px; }
-  .more-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; top: auto; width: auto; }
+  .list-pane .more-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; top: auto; width: auto; }
 }
 </style>
+<script src="/assets/reader.js" defer></script>
 </head>
 <body>
-<div class="shell">
+<div class="shell {{if .Detail}}has-detail{{end}}">
 <aside class="sidebar">
   <a href="/" class="brand">RSS Reader</a>
   <nav class="filters" aria-label="記事の絞り込み">
-    <a href="/" class="{{if and (eq .Filter "") (eq .FeedID 0)}}active{{end}}">すべて</a>
-    <a href="/?view=unread" class="{{if eq .Filter "unread"}}active{{end}}">未読<span class="count">{{.Result.Unread}}</span></a>
-    <a href="/?view=favorites" class="{{if eq .Filter "favorites"}}active{{end}}">お気に入り<span class="count">{{.Result.Favorites}}</span></a>
+    <a href="/" data-workspace-link class="{{if and (eq .Filter "") (eq .FeedID 0)}}active{{end}}">すべて</a>
+    <a href="/?view=unread" data-workspace-link class="{{if eq .Filter "unread"}}active{{end}}">未読<span class="count">{{.Result.Unread}}</span></a>
+    <a href="/?view=favorites" data-workspace-link class="{{if eq .Filter "favorites"}}active{{end}}">お気に入り<span class="count">{{.Result.Favorites}}</span></a>
   </nav>
   <section class="feeds" aria-label="購読フィード">
     <h2>購読フィード <span class="count">{{len .Feeds}}</span></h2>
@@ -129,7 +172,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     {{range .Feeds}}
       <div class="feed">
         <div class="feed-line">
-          <a href="/?feed={{.ID}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
+          <a data-workspace-link href="/?feed={{.ID}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
           <form action="/feeds/{{.ID}}/remove" method="post"><input type="hidden" name="return_to" value="/"><button aria-label="{{.Title}}の購読を解除">解除</button></form>
         </div>
         {{if .LastError}}<small class="error">取得エラー：{{.LastError}}</small>{{else if not .CheckedAt}}<span class="muted">未取得</span>{{end}}
@@ -138,9 +181,10 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     </div>
   </section>
 </aside>
-<div class="content">
+<main id="workspace" class="workspace">
+<section id="list-pane" class="list-pane" aria-label="記事一覧" tabindex="-1">
 <header>
-  <p class="heading">{{if .Detail}}記事{{else if eq .Filter "unread"}}未読{{else if eq .Filter "favorites"}}お気に入り{{else}}記事一覧{{end}}</p>
+  <p class="heading">{{if eq .Filter "unread"}}未読{{else if eq .Filter "favorites"}}お気に入り{{else}}記事一覧{{end}}</p>
   <div class="header-actions">
     <form method="post" action="/refresh">
       <input type="hidden" name="return_to" value="{{.ReturnTo}}">
@@ -169,31 +213,9 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     </details>
   </div>
 </header>
-<main>
 {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
-{{if .Detail}}
-  <a class="back" href="/">← 一覧へ</a>
-  <article class="reader">
-  {{with .Detail}}
-    <div class="meta"><span>{{.SourceName}}</span><time>{{date .PublishedAt}}</time></div>
-    <h1>{{.Title}}</h1>
-    <div class="actions">
-      <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer">元記事 ↗</a>
-      <form method="post" action="/articles/{{.ID}}/state">
-        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
-        <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
-      </form>
-      <form method="post" action="/articles/{{.ID}}/state">
-        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
-        <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
-      </form>
-    </div>
-    <div class="body">{{if .BodyText}}{{.BodyText}}{{else}}保存された本文はありません。元記事をご覧ください。{{end}}</div>
-  {{end}}
-  </article>
-{{else}}
 
-  <form class="search" method="get" action="/" role="search">
+  <form class="search" data-workspace-search method="get" action="/" role="search">
     <input type="hidden" name="view" value="{{.Filter}}"><input type="hidden" name="feed" value="{{.FeedID}}">
     <input name="q" type="search" value="{{.Query}}" aria-label="タイトル・本文を検索" placeholder="記事を検索">
     <button>検索</button>
@@ -204,8 +226,8 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <span class="muted">{{.Result.Total}}件</span>
   </div>
   {{range .Result.Items}}
-  <article class="article {{if .IsRead}}read{{end}}">
-    <h2><a href="/articles/{{.ID}}">{{.Title}}</a></h2>
+  <article class="article {{if .IsRead}}read{{end}} {{if $.Detail}}{{if eq $.Detail.ID .ID}}selected{{end}}{{end}}" data-article-id="{{.ID}}">
+    <h2><a href="{{articleURL $.ListURL .ID}}" data-workspace-link {{if $.Detail}}{{if eq $.Detail.ID .ID}}aria-current="true"{{end}}{{end}}>{{.Title}}</a></h2>
     <div class="article-bottom">
       <div class="meta"><span>{{.SourceName}}</span><time>{{date .PublishedAt}}</time></div>
       <div class="actions">
@@ -231,14 +253,39 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「追加」から登録してください。{{end}}</p>{{end}}
   {{if gt .Result.Pages 1}}
   <nav class="pagination" aria-label="ページ送り">
-    <span>{{if .Previous}}<a class="button" href="{{.Previous}}">前へ</a>{{end}}</span>
+    <span>{{if .Previous}}<a class="button" data-workspace-link href="{{.Previous}}">前へ</a>{{end}}</span>
     <span class="muted">{{.Result.Page}} / {{.Result.Pages}}</span>
-    <span>{{if .Next}}<a class="button" href="{{.Next}}">次へ</a>{{end}}</span>
+    <span>{{if .Next}}<a class="button" data-workspace-link href="{{.Next}}">次へ</a>{{end}}</span>
   </nav>
   {{end}}
-{{end}}
+</section>
+<section id="reader-pane" class="reader-pane" aria-label="記事の本文" tabindex="-1">
+{{if .Detail}}
+  <div class="reader-toolbar"><span class="muted">記事</span><a class="button" href="{{.ListURL}}" data-workspace-link aria-label="記事を閉じる">閉じる</a></div>
+  <article class="reader" data-reading-id="{{.Detail.ID}}">
+  {{with .Detail}}
+    <div class="meta"><span>{{.SourceName}}</span><time>{{date .PublishedAt}}</time></div>
+    <h1>{{.Title}}</h1>
+    <div class="actions">
+      <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer">元記事 ↗</a>
+      <form method="post" action="/articles/{{.ID}}/fetch-content"><input type="hidden" name="return_to" value="{{$.ReturnTo}}"><button>{{if .FullFetchedAt}}本文を再取得{{else}}本文を取得{{end}}</button></form>
+      <form method="post" action="/articles/{{.ID}}/state">
+        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
+        <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
+      </form>
+      <form method="post" action="/articles/{{.ID}}/state">
+        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
+        <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
+      </form>
+    </div>
+    <p class="muted content-source">{{if .FullFetchedAt}}元ページから取得した本文{{else if .SourceID}}RSSに含まれる本文・要約{{else}}登録した本文・メモ{{end}}</p>
+    {{$body := richArticle .}}{{if $body}}<div class="body">{{$body}}</div>{{else}}<div class="body plain">{{if .FullBodyText}}{{.FullBodyText}}{{else if .BodyText}}{{.BodyText}}{{else}}保存された本文はありません。「本文を取得」または元記事からお読みください。{{end}}</div>{{end}}
+  {{end}}
+  </article>
+
+{{else}}<div class="reader-placeholder">一覧から記事を選択してください</div>{{end}}
+</section>
 </main>
-</div>
 </div>
 </body>
 </html>

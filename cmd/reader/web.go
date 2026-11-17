@@ -21,8 +21,13 @@ import (
 //go:embed page.html
 var pageHTML string
 
+//go:embed reader.js
+var readerJS string
+
 var page = template.Must(template.New("page").Funcs(template.FuncMap{
-	"date": func(t time.Time) string { return t.Format("2006.01.02") },
+	"richArticle": richArticle,
+	"articleURL":  articleURL,
+	"date":        func(t time.Time) string { return t.Format("2006.01.02") },
 	"excerpt": func(s string) string {
 		r := []rune(s)
 		if len(r) > 180 {
@@ -39,22 +44,29 @@ type application struct {
 	fetcher  *ingestion.Service
 }
 type view struct {
-	Feeds                                            []feeds.Feed
-	Result                                           articles.Result
-	Query, Filter, Message, ReturnTo, Previous, Next string
-	FeedID                                           int64
-	Detail                                           *articles.Article
+	Feeds                                                     []feeds.Feed
+	Result                                                    articles.Result
+	Query, Filter, Message, ReturnTo, ListURL, Previous, Next string
+	FeedID                                                    int64
+	Detail                                                    *articles.Article
 }
 
 func (a *application) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", a.index)
+	mux.HandleFunc("GET /assets/reader.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		if _, err := w.Write([]byte(readerJS)); err != nil {
+			log.Printf("write reader script: %v", err)
+		}
+	})
 	mux.HandleFunc("GET /articles/{id}", a.detail)
 	mux.HandleFunc("POST /feeds", a.addFeed)
 	mux.HandleFunc("POST /feeds/{id}/remove", a.removeFeed)
 	mux.HandleFunc("POST /refresh", a.refresh)
 	mux.HandleFunc("POST /articles", a.addArticle)
 	mux.HandleFunc("POST /articles/{id}/state", a.state)
+	mux.HandleFunc("POST /articles/{id}/fetch-content", a.fetchContent)
 	mux.HandleFunc("POST /articles/{id}/delete", a.deleteArticle)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
@@ -70,7 +82,7 @@ func (a *application) routes() http.Handler {
 	protected := http.NewCrossOriginProtection().Handler(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; img-src https: http:; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Cache-Control", "no-store")
 		r.Body = http.MaxBytesReader(w, r.Body, 256<<10)
@@ -151,7 +163,8 @@ func (a *application) base(r *http.Request) (view, error) {
 		return view{}, err
 	}
 	q.Del("message")
-	back := r.URL.Path
+	q.Del("article")
+	back := "/"
 	if len(q) > 0 {
 		back += "?" + q.Encode()
 	}
@@ -172,10 +185,14 @@ func (a *application) base(r *http.Request) (view, error) {
 		message = "記事を更新しました"
 	case "fetch-error":
 		message = "取得できなかったフィードがあります。「購読フィード」の取得状況をご確認ください。"
+	case "content-saved":
+		message = "本文を取得しました"
+	case "content-error":
+		message = "本文を取得できませんでした。元記事でご確認ください。"
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
-	return view{Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, Previous: prev, Next: next, Message: message}, nil
+	return view{Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
 }
 
 func (a *application) index(w http.ResponseWriter, r *http.Request) {
@@ -183,6 +200,20 @@ func (a *application) index(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	if raw := r.URL.Query().Get("article"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n < 1 {
+			http.Error(w, "記事の指定が不正です", http.StatusBadRequest)
+			return
+		}
+		item, err := a.articles.Get(r.Context(), n)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		v.Detail = &item
+		v.ReturnTo = articleURL(v.ListURL, n)
 	}
 	render(w, v)
 }
@@ -204,6 +235,7 @@ func (a *application) detail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Detail = &item
+	v.ReturnTo = articleURL(v.ListURL, n)
 	render(w, v)
 }
 
@@ -285,10 +317,63 @@ func (a *application) deleteArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	// A deleted detail page can no longer be rendered.
-	if strings.HasPrefix(returnTo(r), "/articles/") {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+	// Remove only the deleted selection; preserve search, feed and page.
+	target, _ := url.Parse(returnTo(r))
+	if target.Query().Get("article") == strconv.FormatInt(n, 10) || strings.HasPrefix(target.Path, "/articles/") {
+		http.Redirect(w, r, articleURL(target.String(), 0), http.StatusSeeOther)
 		return
 	}
 	redirect(w, r, "")
+}
+
+func (a *application) fetchContent(w http.ResponseWriter, r *http.Request) {
+	n, err := id(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	item, err := a.articles.Get(r.Context(), n)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	content, err := a.fetcher.FetchArticle(r.Context(), item.URL)
+	target := articleURL(returnTo(r), n)
+	if err != nil {
+		log.Printf("fetch article %d: %v", n, err)
+		http.Redirect(w, r, withMessage(target, "content-error"), http.StatusSeeOther)
+		return
+	}
+	if err := a.articles.SaveFullContent(r.Context(), n, content); err != nil {
+		fail(w, err)
+		return
+	}
+	http.Redirect(w, r, withMessage(target, "content-saved"), http.StatusSeeOther)
+}
+
+// articleURL keeps the current list context while changing the selected article.
+func articleURL(listURL string, id int64) string {
+	u, err := url.Parse(listURL)
+	if err != nil {
+		u = &url.URL{}
+	}
+	q := u.Query()
+	q.Del("message")
+	if id > 0 {
+		q.Set("article", strconv.FormatInt(id, 10))
+	} else {
+		q.Del("article")
+	}
+	if len(q) == 0 {
+		return "/"
+	}
+	return "/?" + q.Encode()
+}
+
+func withMessage(target, message string) string {
+	u, _ := url.Parse(target)
+	q := u.Query()
+	q.Set("message", message)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
