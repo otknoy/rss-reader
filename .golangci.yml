@@ -1,0 +1,35 @@
+version: "2"
+
+formatters:
+  # フォーマッターはデフォルトでは有効にならないため、追加する。
+  enable:
+    - gofumpt
+    - goimports
+
+linters:
+  # 標準ルールも下に列挙し、有効なルールを明示する。
+  default: none
+  enable:
+    # デフォルトで有効なルール（golangci-lint v2.15.0）。
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # 追加ルール（+ alpha）。
+    - bodyclose
+    - durationcheck
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - nolintlint
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true

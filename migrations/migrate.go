@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -13,12 +14,18 @@ import (
 //go:embed *.sql
 var files embed.FS
 
-func Run(ctx context.Context, db *sql.DB) error {
+// Run applies pending migrations in order within a single transaction.
+func Run(ctx context.Context, db *sql.DB) (err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		rollbackErr := tx.Rollback()
+		if !errors.Is(rollbackErr, sql.ErrTxDone) {
+			err = errors.Join(err, rollbackErr)
+		}
+	}()
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(7221901)`); err != nil {
 		return err
 	}

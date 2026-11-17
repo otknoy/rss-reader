@@ -19,6 +19,7 @@ func TestPublicIP(t *testing.T) {
 		}
 	}
 }
+
 func TestPlainText(t *testing.T) {
 	raw := `<p>日本語 &amp; Go</p><script>alert(1)</script><style>body{}</style><p>全文検索</p>`
 	if got := PlainText(raw); got != "日本語 & Go 全文検索" {

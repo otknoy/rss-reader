@@ -9,25 +9,35 @@ import (
 	"time"
 )
 
+// Article represents a saved article and its reading state.
 type Article struct {
 	ID, SourceID                                           int64
 	ExternalID, SourceName, URL, Title, BodyText, BodyHTML string
 	PublishedAt                                            time.Time
 	IsRead, Favorite                                       bool
 }
+
+// Query selects articles by text, state, feed and page.
 type Query struct {
 	Text, View string
 	FeedID     int64
 	Page       int
 }
+
+// Result contains a page of articles and aggregate counts.
 type Result struct {
 	Items                    []Article
 	Total, Unread, Favorites int
 	Page, Pages              int
 }
+
+// Store persists articles in the articles database.
 type Store struct{ db *sql.DB }
 
+// New creates an article store.
 func New(db *sql.DB) *Store { return &Store{db: db} }
+
+// Save inserts or updates an article while preserving its reading state.
 func (s *Store) Save(ctx context.Context, a Article) error {
 	u, err := url.Parse(a.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
@@ -57,9 +67,13 @@ func scan(row interface{ Scan(...any) error }) (Article, error) {
 	err := row.Scan(&a.ID, &a.SourceID, &a.ExternalID, &a.SourceName, &a.URL, &a.Title, &a.BodyText, &a.BodyHTML, &a.PublishedAt, &a.IsRead, &a.Favorite)
 	return a, err
 }
+
+// Get returns an article that has not been deleted.
 func (s *Store) Get(ctx context.Context, id int64) (Article, error) {
 	return scan(s.db.QueryRowContext(ctx, `SELECT `+columns+` FROM articles.entries WHERE id=$1 AND deleted_at IS NULL`, id))
 }
+
+// SetState updates the read or favorite state of an article.
 func (s *Store) SetState(ctx context.Context, id int64, kind string, value bool) error {
 	field := ""
 	switch kind {
@@ -73,6 +87,7 @@ func (s *Store) SetState(ctx context.Context, id int64, kind string, value bool)
 	result, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET `+field+`= $2 WHERE id=$1 AND deleted_at IS NULL`, id, value)
 	return affected(result, err)
 }
+
 func affected(result sql.Result, err error) error {
 	if err != nil {
 		return err
@@ -86,12 +101,16 @@ func affected(result sql.Result, err error) error {
 	}
 	return nil
 }
+
+// Delete marks an article as deleted.
 func (s *Store) Delete(ctx context.Context, id int64) error {
 	r, e := s.db.ExecContext(ctx, `UPDATE articles.entries SET deleted_at=now() WHERE id=$1 AND deleted_at IS NULL`, id)
 	return affected(r, e)
 }
-func (s *Store) Search(ctx context.Context, q Query) (Result, error) {
-	r := Result{Page: q.Page}
+
+// Search returns matching articles and reading-state counts.
+func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
+	r = Result{Page: q.Page}
 	if r.Page < 1 {
 		r.Page = 1
 	}
@@ -115,7 +134,7 @@ func (s *Store) Search(ctx context.Context, q Query) (Result, error) {
 	if err != nil {
 		return r, err
 	}
-	defer rows.Close()
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		a, err := scan(rows)
 		if err != nil {
@@ -125,4 +144,6 @@ func (s *Store) Search(ctx context.Context, q Query) (Result, error) {
 	}
 	return r, rows.Err()
 }
+
+// Ping checks connectivity to the article database.
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }

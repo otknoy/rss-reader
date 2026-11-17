@@ -3,21 +3,22 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"strings"
-	"testing"
-	"time"
-
-	"github.com/jackc/pgx/v5/pgconn"
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
 	"rss-reader/internal/search"
 	"rss-reader/migrations"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Every run gets its own database. No development tables are cleared.
@@ -32,7 +33,11 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
+	defer func() {
+		if err := admin.Close(); err != nil {
+			t.Errorf("close admin database: %v", err)
+		}
+	}()
 	name := fmt.Sprintf("reader_test_%d", time.Now().UnixNano())
 	if _, err := admin.ExecContext(ctx, `CREATE DATABASE `+name); err != nil {
 		t.Fatal(err)
@@ -40,7 +45,9 @@ func TestPrototypeIntegration(t *testing.T) {
 	var connections []*sql.DB
 	defer func() {
 		for _, db := range connections {
-			db.Close()
+			if err := db.Close(); err != nil {
+				t.Errorf("close database: %v", err)
+			}
 		}
 		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -76,8 +83,8 @@ func TestPrototypeIntegration(t *testing.T) {
 		table string
 	}{{fdb, "articles.entries"}, {adb, "feeds.subscriptions"}} {
 		_, err := tc.db.ExecContext(ctx, `SELECT * FROM `+tc.table)
-		pgerr, ok := err.(*pgconn.PgError)
-		if !ok || pgerr.Code != "42501" {
+		var pgerr *pgconn.PgError
+		if !errors.As(err, &pgerr) || pgerr.Code != "42501" {
 			t.Fatalf("expected permission denial for %s, got %v", tc.table, err)
 		}
 	}

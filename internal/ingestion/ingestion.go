@@ -9,21 +9,23 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"rss-reader/internal/articles"
+	"rss-reader/internal/feeds"
 	"strings"
 	"time"
 
 	"github.com/mmcdole/gofeed"
 	"golang.org/x/net/html"
-	"rss-reader/internal/articles"
-	"rss-reader/internal/feeds"
 )
 
+// Service fetches subscriptions and saves their articles.
 type Service struct {
 	feeds    *feeds.Store
 	articles *articles.Store
 	client   *http.Client
 }
 
+// New creates a feed ingestion service with a public-network HTTP client.
 func New(f *feeds.Store, a *articles.Store) *Service {
 	return &Service{feeds: f, articles: a, client: PublicClient()}
 }
@@ -59,6 +61,7 @@ func PublicClient() *http.Client {
 		return feeds.ValidateURL(req.URL.String())
 	}}
 }
+
 func publicIP(ip netip.Addr) bool {
 	ip = ip.Unmap()
 	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
@@ -71,6 +74,8 @@ func publicIP(ip netip.Addr) bool {
 	}
 	return true
 }
+
+// Refresh fetches all active subscriptions and saves their articles.
 func (s *Service) Refresh(ctx context.Context) error {
 	list, err := s.feeds.List(ctx)
 	if err != nil {
@@ -91,7 +96,8 @@ func (s *Service) Refresh(ctx context.Context) error {
 	}
 	return errors.Join(failures...)
 }
-func (s *Service) fetch(ctx context.Context, f feeds.Feed) (string, error) {
+
+func (s *Service) fetch(ctx context.Context, f feeds.Feed) (title string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.URL, nil)
 	if err != nil {
 		return "", err
@@ -101,16 +107,16 @@ func (s *Service) fetch(ctx context.Context, f feeds.Feed) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { err = errors.Join(err, resp.Body.Close()) }()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	const max = 4 << 20
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
+	const maxFeedBytes = 4 << 20
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
 	if err != nil {
 		return "", err
 	}
-	if len(raw) > max {
+	if len(raw) > maxFeedBytes {
 		return "", errors.New("フィードが4MBを超えています")
 	}
 	title, items, err := parseFeed(raw, resp.Request.URL, f)

@@ -1,3 +1,4 @@
+// Package main runs the RSS reader web server and maintenance commands.
 package main
 
 import (
@@ -5,20 +6,21 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
-	"time"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
 	"rss-reader/internal/search"
 	"rss-reader/migrations"
+	"syscall"
+	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
@@ -27,6 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 }
+
 func openDB(ctx context.Context, key string) (*sql.DB, error) {
 	dsn := os.Getenv(key)
 	if dsn == "" {
@@ -40,11 +43,12 @@ func openDB(ctx context.Context, key string) (*sql.DB, error) {
 	db.SetMaxIdleConns(2)
 	db.SetConnMaxLifetime(30 * time.Minute)
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		closeResource(db)
 		return nil, fmt.Errorf("database connection failed (%s)", key)
 	}
 	return db, nil
 }
+
 func run() error {
 	command := "web"
 	if len(os.Args) > 1 {
@@ -64,7 +68,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
+		defer closeResource(resp.Body)
 		if resp.StatusCode != 200 {
 			return errors.New("unhealthy")
 		}
@@ -82,19 +86,19 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		defer db.Close()
+		defer closeResource(db)
 		return migrations.Run(startup, db)
 	}
 	fdb, err := openDB(startup, "FEEDS_DATABASE_URL")
 	if err != nil {
 		return err
 	}
-	defer fdb.Close()
+	defer closeResource(fdb)
 	adb, err := openDB(startup, "ARTICLES_DATABASE_URL")
 	if err != nil {
 		return err
 	}
-	defer adb.Close()
+	defer closeResource(adb)
 	fs, as := feeds.New(fdb), articles.New(adb)
 	fetcher := ingestion.New(fs, as)
 	if command == "fetch" {
@@ -120,5 +124,11 @@ func run() error {
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return server.Shutdown(shutdown)
+	}
+}
+
+func closeResource(resource io.Closer) {
+	if err := resource.Close(); err != nil {
+		log.Printf("close resource: %v", err)
 	}
 }

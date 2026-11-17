@@ -9,15 +9,20 @@ import (
 	"time"
 )
 
+// Feed describes a subscription and its persisted fetch metadata.
 type Feed struct {
 	ID                    int64
 	URL, Title, LastError string
 	CheckedAt             *time.Time
 }
+
+// Store persists feed subscriptions and fetch metadata.
 type Store struct{ db *sql.DB }
 
+// New creates a subscription store.
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
+// ValidateURL accepts HTTP and HTTPS URLs without credentials.
 func ValidateURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
@@ -25,6 +30,8 @@ func ValidateURL(raw string) error {
 	}
 	return nil
 }
+
+// Add subscribes to a URL or reactivates an existing subscription.
 func (s *Store) Add(ctx context.Context, raw string) error {
 	raw = strings.TrimSpace(raw)
 	if err := ValidateURL(raw); err != nil {
@@ -33,6 +40,8 @@ func (s *Store) Add(ctx context.Context, raw string) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO feeds.subscriptions (url,title) VALUES ($1,$1) ON CONFLICT(url) DO UPDATE SET active=true`, raw)
 	return err
 }
+
+// Remove deactivates a subscription.
 func (s *Store) Remove(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx, `UPDATE feeds.subscriptions SET active=false WHERE id=$1 AND active`, id)
 	if err != nil {
@@ -47,13 +56,14 @@ func (s *Store) Remove(ctx context.Context, id int64) error {
 	}
 	return nil
 }
-func (s *Store) List(ctx context.Context) ([]Feed, error) {
+
+// List returns active subscriptions.
+func (s *Store) List(ctx context.Context) (out []Feed, err error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id,url,title,checked_at,last_error FROM feeds.subscriptions WHERE active ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []Feed
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var f Feed
 		if err := rows.Scan(&f.ID, &f.URL, &f.Title, &f.CheckedAt, &f.LastError); err != nil {
@@ -63,6 +73,8 @@ func (s *Store) List(ctx context.Context) ([]Feed, error) {
 	}
 	return out, rows.Err()
 }
+
+// Record saves the outcome of a feed fetch.
 func (s *Store) Record(ctx context.Context, id int64, title string, fetchErr error) error {
 	message := ""
 	if fetchErr != nil {
@@ -71,4 +83,6 @@ func (s *Store) Record(ctx context.Context, id int64, title string, fetchErr err
 	_, err := s.db.ExecContext(ctx, `UPDATE feeds.subscriptions SET checked_at=now(),last_error=$2,title=CASE WHEN $3='' THEN title ELSE $3 END WHERE id=$1`, id, message, title)
 	return err
 }
+
+// Ping checks connectivity to the subscription database.
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }

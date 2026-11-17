@@ -9,19 +9,19 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
-
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
 	"rss-reader/internal/search"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
 
 //go:embed page.html
 var pageHTML string
+
 var page = template.Must(template.New("page").Funcs(template.FuncMap{
 	"date": func(t time.Time) string { return t.Format("2006.01.02") },
 	"excerpt": func(s string) string {
@@ -62,10 +62,12 @@ func (a *application) routes() http.Handler {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
 		if a.feeds.Ping(ctx) != nil || a.articles.Ping(ctx) != nil {
-			http.Error(w, "unhealthy", 503)
+			http.Error(w, "unhealthy", http.StatusServiceUnavailable)
 			return
 		}
-		w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			log.Printf("write health response: %v", err)
+		}
 	})
 	protected := http.NewCrossOriginProtection().Handler(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +87,7 @@ func (a *application) routes() http.Handler {
 		protected.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
 func fail(w http.ResponseWriter, err error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "見つかりません", 404)
@@ -93,12 +96,14 @@ func fail(w http.ResponseWriter, err error) {
 	log.Printf("request failed: %v", err)
 	http.Error(w, "処理に失敗しました。ログを確認してください。", 500)
 }
+
 func render(w http.ResponseWriter, v view) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := page.Execute(w, v); err != nil {
 		log.Printf("render: %v", err)
 	}
 }
+
 func returnTo(r *http.Request) string {
 	raw := r.FormValue("return_to")
 	u, err := url.Parse(raw)
@@ -107,6 +112,7 @@ func returnTo(r *http.Request) string {
 	}
 	return u.RequestURI()
 }
+
 func redirect(w http.ResponseWriter, r *http.Request, message string) {
 	target := returnTo(r)
 	u, _ := url.Parse(target)
@@ -118,6 +124,7 @@ func redirect(w http.ResponseWriter, r *http.Request, message string) {
 	u.RawQuery = q.Encode()
 	http.Redirect(w, r, u.String(), http.StatusSeeOther)
 }
+
 func id(r *http.Request) (int64, error) {
 	n, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || n < 1 {
@@ -125,6 +132,7 @@ func id(r *http.Request) (int64, error) {
 	}
 	return n, nil
 }
+
 func (a *application) base(r *http.Request) (view, error) {
 	list, err := a.feeds.List(r.Context())
 	if err != nil {
@@ -171,6 +179,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 	return view{Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, Previous: prev, Next: next, Message: message}, nil
 }
+
 func (a *application) index(w http.ResponseWriter, r *http.Request) {
 	v, err := a.base(r)
 	if err != nil {
@@ -179,6 +188,7 @@ func (a *application) index(w http.ResponseWriter, r *http.Request) {
 	}
 	render(w, v)
 }
+
 func (a *application) detail(w http.ResponseWriter, r *http.Request) {
 	n, err := id(r)
 	if err != nil {
@@ -198,6 +208,7 @@ func (a *application) detail(w http.ResponseWriter, r *http.Request) {
 	v.Detail = &item
 	render(w, v)
 }
+
 func (a *application) addFeed(w http.ResponseWriter, r *http.Request) {
 	raw := strings.TrimSpace(r.FormValue("url"))
 	if err := feeds.ValidateURL(raw); err != nil {
@@ -210,6 +221,7 @@ func (a *application) addFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect(w, r, "saved")
 }
+
 func (a *application) removeFeed(w http.ResponseWriter, r *http.Request) {
 	n, err := id(r)
 	if err == nil {
@@ -221,9 +233,10 @@ func (a *application) removeFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect(w, r, "removed")
 }
+
 func (a *application) refresh(w http.ResponseWriter, r *http.Request) {
 	if !a.refreshMu.TryLock() {
-		http.Error(w, "取得処理を実行中です。しばらくお待ちください。", 409)
+		http.Error(w, "取得処理を実行中です。しばらくお待ちください。", http.StatusConflict)
 		return
 	}
 	defer a.refreshMu.Unlock()
@@ -234,6 +247,7 @@ func (a *application) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect(w, r, message)
 }
+
 func (a *application) addArticle(w http.ResponseWriter, r *http.Request) {
 	raw := strings.TrimSpace(r.FormValue("url"))
 	if err := feeds.ValidateURL(raw); err != nil {
@@ -247,6 +261,7 @@ func (a *application) addArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect(w, r, "saved")
 }
+
 func (a *application) state(w http.ResponseWriter, r *http.Request) {
 	kind, value := r.FormValue("kind"), r.FormValue("value")
 	if (kind != "read" && kind != "favorite") || (value != "true" && value != "false") {
@@ -263,6 +278,7 @@ func (a *application) state(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect(w, r, "")
 }
+
 func (a *application) deleteArticle(w http.ResponseWriter, r *http.Request) {
 	n, err := id(r)
 	if err == nil {
@@ -274,7 +290,7 @@ func (a *application) deleteArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	// A deleted detail page can no longer be rendered.
 	if strings.HasPrefix(returnTo(r), "/articles/") {
-		http.Redirect(w, r, "/", 303)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 	redirect(w, r, "")
