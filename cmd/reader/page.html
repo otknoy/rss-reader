@@ -43,10 +43,7 @@ summary { cursor: pointer; }
 .article[aria-busy="true"] { opacity: .6; }
 .workspace-error { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: calc(100vw - 32px); padding: 12px 18px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: #f0a69c; }
 .list-pane .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
-.list-pane .article { position: relative; }
 .list-pane .article h2 { font-size: 14px; }
-.list-pane .more { position: static; }
-.list-pane .more-panel { left: 8px; right: 8px; top: calc(100% - 8px); width: auto; }
 .heading { margin: 0; font-size: 18px; font-weight: 500; }
 .sidebar .brand { display: inline-block; margin-bottom: 28px; }
 .sidebar .filters { flex-direction: column; gap: 4px; border: 0; margin-bottom: 30px; }
@@ -99,12 +96,6 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .actions button, .actions .button { padding: 3px 8px; font-size: 12px; }
 .actions .star { min-width: 32px; font-size: 17px; line-height: 1.5; }
 .favorite { color: #e6c677; }
-.more { position: relative; }
-.more > summary { list-style: none; color: var(--muted); padding: 3px 8px; font-size: 16px; }
-.more > summary::-webkit-details-marker { display: none; }
-.more-panel { position: absolute; right: 0; top: 100%; z-index: 1; width: 230px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; }
-.more-panel p { margin: 8px 0; font-size: 12px; color: var(--muted); }
-.more-panel button { color: #f0a69c; }
 .empty { padding: 48px 0; text-align: center; color: var(--muted); }
 .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
 .reader { max-width: 720px; margin: 24px auto; }
@@ -152,7 +143,6 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
   .article h2 { font-size: 15px; }
   .reader h1 { font-size: 22px; }
-  .list-pane .more-panel { position: fixed; left: 16px; right: 16px; bottom: 16px; top: auto; width: auto; }
 }
 </style>
 <script src="/assets/reader.js" defer></script>
@@ -239,14 +229,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
           <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
           <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
         </form>
-        <details class="more">
-          <summary aria-label="記事のその他の操作">⋯</summary>
-          <div class="more-panel">
-            <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">元記事 ↗</a>
-            <p>削除すると一覧から非表示になります。</p>
-            <form method="post" action="/articles/{{.ID}}/delete"><input type="hidden" name="return_to" value="{{$.ReturnTo}}"><button>記事を削除</button></form>
-          </div>
-        </details>
+        <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer">元記事 ↗</a>
       </div>
     </div>
   </article>

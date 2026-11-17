@@ -68,7 +68,6 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /articles", a.addArticle)
 	mux.HandleFunc("POST /articles/{id}/state", a.state)
 	mux.HandleFunc("GET /articles/{id}/content-status", a.contentStatus)
-	mux.HandleFunc("POST /articles/{id}/delete", a.deleteArticle)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
@@ -300,24 +299,6 @@ func (a *application) state(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		fail(w, err)
-		return
-	}
-	redirect(w, r, "")
-}
-
-func (a *application) deleteArticle(w http.ResponseWriter, r *http.Request) {
-	n, err := id(r)
-	if err == nil {
-		err = a.articles.Delete(r.Context(), n)
-	}
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	// Remove only the deleted selection; preserve search, feed and page.
-	target, _ := url.Parse(returnTo(r))
-	if target.Query().Get("article") == strconv.FormatInt(n, 10) || strings.HasPrefix(target.Path, "/articles/") {
-		http.Redirect(w, r, articleURL(target.String(), 0), http.StatusSeeOther)
 		return
 	}
 	redirect(w, r, "")

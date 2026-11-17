@@ -258,9 +258,17 @@ func TestPrototypeIntegration(t *testing.T) {
 	if w := request("GET", "/?view=unread", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "更新された記事") {
 		t.Fatalf("unread HTTP: %d", w.Code)
 	}
-	if w := request("POST", fmt.Sprintf("/articles/%d/delete", articleID), url.Values{"return_to": {selection}}); w.Code != 303 || strings.Contains(w.Header().Get("Location"), "article=") || !strings.Contains(w.Header().Get("Location"), "feed=") {
-		t.Fatalf("delete HTTP: %d", w.Code)
+	if w := request("POST", fmt.Sprintf("/articles/%d/delete", articleID), url.Values{"return_to": {selection}}); w.Code != http.StatusNotFound {
+		t.Fatalf("article deletion is still exposed over HTTP: %d", w.Code)
 	}
+	if w := request("GET", selection, nil); w.Code != http.StatusOK {
+		t.Fatalf("rejected deletion changed article: %d", w.Code)
+	}
+	// Preserve support for historical deleted rows without exposing deletion in the Web UI.
+	if err := as.Delete(ctx, articleID); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := as.Save(ctx, article); err != nil {
 		t.Fatal(err)
 	}
