@@ -199,7 +199,6 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   <a href="/{{if .NewestFirst}}?sort=newest{{end}}" class="brand">RSS Reader</a>
   <nav class="filters" aria-label="記事の絞り込み">
     <a href="/{{if .NewestFirst}}?sort=newest{{end}}" data-workspace-link class="{{if and (eq .Filter "") (eq .FeedID 0) (not .Folder)}}active{{end}}">すべて</a>
-    {{if or .Folder .FeedID}}<a href="{{.Scope}}" data-workspace-link class="{{if not .Filter}}active{{end}}">選択範囲のすべて</a>{{end}}
     <a href="{{.Scope}}view=unread" data-workspace-link class="{{if eq .Filter "unread"}}active{{end}}">未読<span class="count">{{.Result.Unread}}</span></a>
     <a href="{{.Scope}}view=favorites" data-workspace-link class="{{if eq .Filter "favorites"}}active{{end}}">お気に入り<span class="count">{{.Result.Favorites}}</span></a>
   </nav>
