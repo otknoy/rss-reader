@@ -299,6 +299,10 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     </dialog>
     </div>
   </section>
+  <details class="shortcuts-help">
+    <summary>キーボード操作</summary>
+    <p>j / k：次・前の記事を開いて既読にする<br>Shift + j / k：検索範囲を切り替え<br>i：元記事を別タブで開く<br>f：お気に入りを切り替え<br>Space / Shift + Space：本文を下・上へスクロール</p>
+  </details>
 </aside>
 <main id="workspace" class="workspace" aria-keyshortcuts="j k i f Space Shift+Space">
 <section id="list-pane" data-page="{{.Result.Page}}" class="list-pane" aria-label="記事一覧" tabindex="-1">
@@ -341,10 +345,6 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <span>{{if .Next}}<a class="button" data-workspace-link data-keyboard-page="next" href="{{.Next}}">次へ</a>{{end}}</span>
   </nav>
   {{end}}
-  <details class="shortcuts-help">
-    <summary>キーボード操作</summary>
-    <p>j / k：次・前の記事を開いて既読にする<br>Shift + j / k：検索範囲を切り替え<br>i：元記事を別タブで開く<br>f：お気に入りを切り替え<br>Space / Shift + Space：本文を下・上へスクロール</p>
-  </details>
   <span id="keyboard-status" class="visually-hidden" role="status" aria-atomic="true"></span>
 </section>
 <section id="reader-pane" class="reader-pane" aria-label="記事の本文" tabindex="-1">

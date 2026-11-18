@@ -261,7 +261,7 @@
 
     const rows = Array.from(nextList.querySelectorAll("[data-article-id]"));
     const empty = nextList.querySelector(".empty");
-    const end = nextList.querySelector(".pagination, .shortcuts-help");
+    const end = nextList.querySelector(".pagination, #keyboard-status");
     for (const [id, { row, index }] of Array.from(retained).sort((a, b) => a[1].index - b[1].index)) {
       if (rows.some(item => item.dataset.articleId === id)) continue;
       const copy = row.cloneNode(true);
