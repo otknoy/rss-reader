@@ -254,11 +254,19 @@ func TestPrototypeIntegration(t *testing.T) {
 	if w := request("POST", "/articles", url.Values{"url": {"https://example.com/manual"}, "title": {"手動登録記事"}, "body": {"保存した本文"}}); w.Code != 303 {
 		t.Fatalf("manual add HTTP: %d %s", w.Code, w.Body.String())
 	}
+	if w := request("GET", "/?view=read", nil); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), "更新された記事") || strings.Contains(w.Body.String(), "手動登録記事") {
+		t.Fatalf("read filter did not select only read articles: %d", w.Code)
+	}
 	if w := request("POST", fmt.Sprintf("/articles/%d/state", articleID), url.Values{"kind": {"read"}, "value": {"false"}}); w.Code != 303 {
 		t.Fatalf("state HTTP: %d", w.Code)
 	}
 	if w := request("GET", "/?view=unread", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "更新された記事") {
 		t.Fatalf("unread HTTP: %d", w.Code)
+	}
+	if w := request("GET", "/?view=unread-favorites", nil); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), "更新された記事") || strings.Contains(w.Body.String(), "手動登録記事") {
+		t.Fatalf("combined unread and favorite filters: %d", w.Code)
 	}
 	if w := request("POST", fmt.Sprintf("/articles/%d/delete", articleID), url.Values{"return_to": {selection}}); w.Code != http.StatusNotFound {
 		t.Fatalf("article deletion is still exposed over HTTP: %d", w.Code)

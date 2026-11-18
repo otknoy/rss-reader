@@ -78,7 +78,7 @@
       const nextContext = contextKey(response.url);
       const sameContext = nextContext === currentContext;
       const change = options.stateChange;
-      if (sameContext && change?.kind === "favorite" && urlView(response.url) !== "favorites") {
+      if (sameContext && change?.kind === "favorite" && !isFavoritesView(new URL(response.url).searchParams)) {
         // The result set is unchanged. Keep the rows, keyboard cursor and scroll in place.
         for (const article of document.querySelectorAll("[data-article-id], .reader[data-reading-id]")) {
           if ((article.dataset.articleId || article.dataset.readingId) === change.id) {
@@ -214,8 +214,9 @@
     }, requestNow ? 0 : hadError ? 30000 : 5000);
   }
 
-  function urlView(url) {
-    return new URL(url).searchParams.get("view");
+  function isFavoritesView(params) {
+    const view = params.get("view");
+    return view === "favorites" || view === "unread-favorites";
   }
 
   function updateFavoriteButton(article, favorite) {
@@ -229,8 +230,10 @@
   }
 
   function updateRetainedFavorites(change) {
-    for (const rows of retainedReadRows.values()) {
-      updateFavoriteButton(rows.get(change.id)?.row, change.value === "true");
+    const favorite = change.value === "true";
+    for (const [context, rows] of retainedReadRows) {
+      if (!favorite && isFavoritesView(new URLSearchParams(context))) rows.delete(change.id);
+      else updateFavoriteButton(rows.get(change.id)?.row, favorite);
     }
   }
 
@@ -240,7 +243,8 @@
       for (const rows of retainedReadRows.values()) rows.delete(change.id);
     }
     if (change?.kind === "favorite") updateRetainedFavorites(change);
-    if (urlView(url) !== "unread") return;
+    const filter = new URL(url).searchParams.get("view");
+    if (filter !== "unread" && filter !== "unread-favorites") return;
     if (context === currentContext && change?.kind === "read" && change.value === "true") {
       const rows = Array.from(oldList.querySelectorAll("[data-article-id]"));
       const index = rows.findIndex(row => row.dataset.articleId === change.id);
@@ -350,27 +354,15 @@
   async function moveSidebarSelection(delta) {
     if (pageMovePending || favoritePending) return;
     const sidebar = document.querySelector(".sidebar");
-    const filters = [...sidebar.querySelectorAll(".filters a[data-workspace-link]")];
-    const folders = [...sidebar.querySelectorAll("[data-sidebar-folder] > summary > a")];
-    const links = [...filters, ...folders];
-    const current = folders.find(link => link.hasAttribute("aria-current")) ||
-      filters.find(link => link.classList.contains("active"));
-    const index = links.indexOf(current);
+    const links = [...sidebar.querySelectorAll("[data-sidebar-scope]")];
+    const index = links.findIndex(link => link.hasAttribute("aria-current"));
     const next = index < 0 ? 0 : index + delta;
     if (!links[next]) return;
 
-    const url = new URL(links[next].href);
-    // Each shortcut selects one sidebar destination without carrying over the previous filter.
-    if (next < filters.length) {
-      url.searchParams.delete("folder");
-      url.searchParams.delete("feed");
-    } else {
-      url.searchParams.delete("view");
-    }
     pageMovePending = true;
     try {
-      if (await navigate(url) && next >= filters.length && !matchMedia("(max-width: 600px)").matches) {
-        document.querySelector(".sidebar [data-sidebar-folder] > summary > a[aria-current]")
+      if (await navigate(links[next].href) && !matchMedia("(max-width: 600px)").matches) {
+        document.querySelector(".sidebar [data-sidebar-scope][aria-current]")
           ?.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
     } finally {

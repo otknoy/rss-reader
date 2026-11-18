@@ -52,7 +52,8 @@ type view struct {
 	FolderUnread, FeedUnread                                  map[int64]int
 	Folders                                                   []feeds.Folder
 	Folder, FolderName                                        string
-	Scope                                                     string
+	UnreadOnly, FavoritesOnly                                 bool
+	UnreadURL, FavoritesURL                                   string
 	NewestFirst                                               bool
 	OldestURL, NewestURL                                      string
 	Feeds                                                     []feeds.Feed
@@ -176,7 +177,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 	p, _ := strconv.Atoi(q.Get("page"))
 	filter := q.Get("view")
-	if filter != "unread" && filter != "favorites" {
+	if filter != "unread" && filter != "read" && filter != "favorites" && filter != "unread-favorites" {
 		filter = ""
 	}
 	folders, err := a.feeds.Folders(r.Context())
@@ -190,11 +191,8 @@ func (a *application) base(r *http.Request) (view, error) {
 	folder := q.Get("folder")
 	folderName := ""
 	var ids []int64
-	scope := "/?"
 	newestFirst := q.Get("sort") == "newest"
-	if newestFirst {
-		scope += "sort=newest&"
-	} else {
+	if !newestFirst {
 		q.Del("sort")
 	}
 	if folder != "" {
@@ -216,9 +214,6 @@ func (a *application) base(r *http.Request) (view, error) {
 				ids = append(ids, f.ID)
 			}
 		}
-		scope += "folder=" + folder + "&"
-	} else if feedID > 0 {
-		scope += "feed=" + strconv.FormatInt(feedID, 10) + "&"
 	}
 	result, err := a.search.Find(r.Context(), articles.Query{Text: q.Get("q"), View: filter, FeedID: feedID, FeedIDs: ids, Page: p, NewestFirst: newestFirst})
 	if err != nil {
@@ -251,6 +246,30 @@ func (a *application) base(r *http.Request) (view, error) {
 		next = "/?" + q.Encode()
 	}
 	q.Del("page")
+	unreadOnly := filter == "unread" || filter == "unread-favorites"
+	favoritesOnly := filter == "favorites" || filter == "unread-favorites"
+	filterURL := func(unread, favorite bool) string {
+		switch {
+		case unread && favorite:
+			q.Set("view", "unread-favorites")
+		case unread:
+			q.Set("view", "unread")
+		case favorite:
+			q.Set("view", "favorites")
+		default:
+			q.Del("view")
+		}
+		if len(q) == 0 {
+			return "/"
+		}
+		return "/?" + q.Encode()
+	}
+	unreadURL := filterURL(!unreadOnly, favoritesOnly)
+	favoritesURL := filterURL(unreadOnly, !favoritesOnly)
+	q.Del("view")
+	if filter != "" {
+		q.Set("view", filter)
+	}
 	q.Del("sort")
 	oldestURL := "/"
 	if len(q) > 0 {
@@ -275,7 +294,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
-	return view{ClosedFolders: closed, FolderUnread: folderUnread, FeedUnread: unreadByFeed, Folders: folders, Folder: folder, FolderName: folderName, Scope: scope, NewestFirst: newestFirst, OldestURL: oldestURL, NewestURL: newestURL, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
+	return view{ClosedFolders: closed, FolderUnread: folderUnread, FeedUnread: unreadByFeed, Folders: folders, Folder: folder, FolderName: folderName, UnreadOnly: unreadOnly, FavoritesOnly: favoritesOnly, UnreadURL: unreadURL, FavoritesURL: favoritesURL, NewestFirst: newestFirst, OldestURL: oldestURL, NewestURL: newestURL, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
 }
 
 func (a *application) index(w http.ResponseWriter, r *http.Request) {

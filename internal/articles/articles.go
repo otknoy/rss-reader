@@ -32,9 +32,9 @@ type Query struct {
 
 // Result contains a page of articles and aggregate counts.
 type Result struct {
-	Items                    []Article
-	Total, Unread, Favorites int
-	Page, Pages              int
+	Items       []Article
+	Total       int
+	Page, Pages int
 }
 
 // Store persists articles in the articles database.
@@ -134,7 +134,7 @@ func (s *Store) UnreadByFeed(ctx context.Context) (counts map[int64]int, err err
 	return counts, rows.Err()
 }
 
-// Search returns matching articles and reading-state counts.
+// Search returns matching articles and their total count.
 func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	r = Result{Page: q.Page}
 	if r.Page < 1 {
@@ -142,11 +142,8 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	}
 	// Escape LIKE metacharacters so user queries are literal substring searches.
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(q.Text)) + "%"
-	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR full_body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($4::bigint[] IS NULL OR source_id=ANY($4::bigint[])) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='favorites' AND favorite))`
+	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR full_body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($4::bigint[] IS NULL OR source_id=ANY($4::bigint[])) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='read' AND is_read) OR ($3='favorites' AND favorite) OR ($3='unread-favorites' AND NOT is_read AND favorite))`
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM articles.entries`+where, pattern, q.FeedID, q.View, q.FeedIDs).Scan(&r.Total); err != nil {
-		return r, err
-	}
-	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FILTER(WHERE NOT is_read),count(*) FILTER(WHERE favorite) FROM articles.entries WHERE deleted_at IS NULL`).Scan(&r.Unread, &r.Favorites); err != nil {
 		return r, err
 	}
 	r.Pages = (r.Total + 19) / 20
