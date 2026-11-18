@@ -103,6 +103,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .folder-card ul { list-style: none; padding: 0; margin: 10px 0 0; }
 .managed-feed-row { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 .managed-feed-row button { padding: 2px 7px; font-size: 12px; }
+.managed-feed-fetch { display: block; margin-top: 2px; }
 .folder-card li { padding: 6px 8px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .managed-feed-title::before { content: "⋮⋮ "; color: var(--muted); }
 .manager-tools { margin-top: 16px; }
@@ -406,7 +407,8 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
       <button aria-label="{{.Title}}の購読を解除">解除</button>
     </form>
   </div>
-  {{if .LastError}}<small class="error">取得エラー：{{.LastError}}</small>{{else if not .CheckedAt}}<span class="muted">未取得</span>{{end}}
+  <small class="muted managed-feed-fetch">最終取得 {{with or .LastSuccessAt (and (not .LastError) .CheckedAt)}}<time datetime="{{.Format "2006-01-02T15:04:05Z07:00"}}">{{date .}}</time>{{else}}未取得{{end}}</small>
+  {{if .LastError}}<small class="error">取得エラー：{{.LastError}}</small>{{end}}
 </li>
 {{end}}
 
