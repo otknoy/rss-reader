@@ -49,7 +49,7 @@ summary { cursor: pointer; }
 .list-pane .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
 .list-pane .article h2 { font-size: 14px; }
 .heading { margin: 0; font-size: 18px; font-weight: 500; }
-.sidebar .brand { display: inline-block; margin-bottom: 28px; }
+.sidebar .brand { display: inline-block; margin-bottom: 12px; }
 .sidebar .filters { flex-direction: column; gap: 4px; border: 0; margin-bottom: 30px; }
 .sidebar .filters a { display: flex; justify-content: space-between; padding: 7px 10px; border: 0; border-radius: 4px; }
 .sidebar .filters a.active { background: #272d29; color: var(--accent); }
@@ -73,7 +73,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .filters a { padding: 8px 0; color: var(--muted); border-bottom: 2px solid transparent; }
 .filters a.active { color: var(--text); border-color: var(--accent); }
 .count { margin-left: 5px; font-size: 12px; color: var(--muted); }
-.search { display: flex; gap: 8px; }
+.search { display: flex; gap: 6px; margin-bottom: 14px; }
 .feeds { margin: 14px 0 22px; color: var(--muted); font-size: 12px; }
 .feeds > summary { width: fit-content; }
 .manage-feeds-button { margin-top: 8px; }
@@ -178,7 +178,6 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   .has-detail .workspace, .has-detail .reader-pane { height: 100dvh; }
   .reader-toolbar { margin-bottom: 16px; }
   .sidebar { position: static; height: auto; padding: 18px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
-  .sidebar .brand { margin-bottom: 12px; }
   .sidebar .filters { flex-direction: row; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
   .sidebar .filters a { gap: 6px; padding: 4px 8px; }
   .sidebar .feed-list { max-height: 180px; overflow-y: auto; }
@@ -197,6 +196,14 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 <div class="shell {{if .Detail}}has-detail{{end}}">
 <aside class="sidebar">
   <a href="/{{if .NewestFirst}}?sort=newest{{end}}" class="brand">RSS Reader</a>
+  <form class="search" data-workspace-search method="get" action="/" role="search">
+    {{if .Filter}}<input type="hidden" name="view" value="{{.Filter}}">{{end}}
+    {{if .Folder}}<input type="hidden" name="folder" value="{{.Folder}}">{{end}}
+    {{if .FeedID}}<input type="hidden" name="feed" value="{{.FeedID}}">{{end}}
+    {{if .NewestFirst}}<input type="hidden" name="sort" value="newest">{{end}}
+    <input name="q" type="search" value="{{.Query}}" aria-label="タイトル・本文を検索" placeholder="記事を検索">
+    <button>検索</button>
+  </form>
   <nav class="filters" aria-label="記事の絞り込み">
     <a href="/{{if .NewestFirst}}?sort=newest{{end}}" data-workspace-link class="{{if and (eq .Filter "") (eq .FeedID 0) (not .Folder)}}active{{end}}">すべて</a>
     <a href="{{.Scope}}view=unread" data-workspace-link class="{{if eq .Filter "unread"}}active{{end}}">未読<span class="count">{{.Result.Unread}}</span></a>
@@ -306,13 +313,6 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   <p class="heading">{{if eq .Filter "unread"}}未読{{else if eq .Filter "favorites"}}お気に入り{{else}}記事一覧{{end}}</p>
 </header>
 {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
-
-  <form class="search" data-workspace-search method="get" action="/" role="search">
-    <input type="hidden" name="view" value="{{.Filter}}">{{if .Folder}}<input type="hidden" name="folder" value="{{.Folder}}">{{end}}<input type="hidden" name="feed" value="{{.FeedID}}">
-    {{if .NewestFirst}}<input type="hidden" name="sort" value="newest">{{end}}
-    <input name="q" type="search" value="{{.Query}}" aria-label="タイトル・本文を検索" placeholder="記事を検索">
-    <button>検索</button>
-  </form>
 
   <div class="results">
     <h1>{{if .Query}}「{{.Query}}」の検索結果{{else if .FolderName}}{{.FolderName}}{{else if eq .Filter "unread"}}未読{{else if eq .Filter "favorites"}}お気に入り{{else if ne .FeedID 0}}{{range .Feeds}}{{if eq $.FeedID .ID}}{{.Title}}{{end}}{{end}}{{else}}すべての記事{{end}}</h1>
