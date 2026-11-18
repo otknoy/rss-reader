@@ -305,6 +305,19 @@
     if (status && previous !== keyboardCursorID) status.textContent = row?.querySelector("h2")?.textContent || "";
   }
 
+  async function openArticle(row, href) {
+    setCursor(row, true);
+    const url = new URL(href);
+    const form = row.querySelector('input[name="kind"][value="read"]').form;
+    await navigate(form.action, {
+      method: "POST",
+      body: new URLSearchParams({ kind: "read", value: "true", return_to: url.pathname + url.search }),
+      refreshList: true,
+      markRead: true,
+      stateChange: { id: row.dataset.articleId, kind: "read", value: "true" },
+    });
+  }
+
   async function moveCursor(delta) {
     if (pageMovePending || favoritePending) return;
     pageMovePending = true;
@@ -324,16 +337,7 @@
       }
       const row = rows[next];
       if (!row) return;
-      setCursor(row, true);
-      const url = new URL(row.querySelector("a[data-workspace-link]").href);
-      const form = row.querySelector('input[name="kind"][value="read"]').form;
-      await navigate(form.action, {
-        method: "POST",
-        body: new URLSearchParams({ kind: "read", value: "true", return_to: url.pathname + url.search }),
-        refreshList: true,
-        markRead: true,
-        stateChange: { id: row.dataset.articleId, kind: "read", value: "true" },
-      });
+      await openArticle(row, row.querySelector("a[data-workspace-link]").href);
     } finally {
       pageMovePending = false;
     }
@@ -450,7 +454,7 @@
     }
   }, true);
 
-  document.addEventListener("click", (event) => {
+  document.addEventListener("click", async (event) => {
     const orderButton = event.target.closest("[data-folder-step]");
     if (orderButton) {
       const folder = orderButton.closest("[data-sortable-folder]");
@@ -474,12 +478,28 @@
       return;
     }
     const row = event.target.closest("[data-article-id]");
-    if (row) setCursor(row);
-    const link = event.target.closest("a[data-workspace-link]");
-    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target) return;
+    let link = event.target.closest("a[data-workspace-link]");
+    if (!link && row && !event.target.closest(".actions")) {
+      link = row.querySelector("a[data-workspace-link]");
+    }
+    if (!link) {
+      if (row) setCursor(row);
+      return;
+    }
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target) return;
     if (new URL(link.href).origin !== location.origin) return;
     event.preventDefault();
-    void navigate(link.href);
+    if (!row) {
+      await navigate(link.href);
+      return;
+    }
+    if (pageMovePending || favoritePending) return;
+    pageMovePending = true;
+    try {
+      await openArticle(row, link.href);
+    } finally {
+      pageMovePending = false;
+    }
   });
 
   let draggedFeed = null;
