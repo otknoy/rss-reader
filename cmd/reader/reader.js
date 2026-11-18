@@ -296,11 +296,35 @@
     return Array.from(document.querySelectorAll("#list-pane [data-article-id]"));
   }
 
+  function scrollToCursor(rows, index) {
+    const row = rows[index];
+    const pane = row.closest("#list-pane");
+    if (pane.clientHeight === 0) return;
+    if (getComputedStyle(pane).overflowY === "visible") {
+      row.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return;
+    }
+
+    // Keep five titles on either side when the list pane has enough room.
+    const titles = rows.map(item => item.querySelector("h2").getBoundingClientRect());
+    let first = Math.max(0, index - 5);
+    let last = Math.min(rows.length - 1, index + 5);
+    while (titles[last].bottom - titles[first].top > pane.clientHeight && first < last) {
+      if (index - first > last - index) first++;
+      else last--;
+    }
+    const top = pane.getBoundingClientRect().top + pane.clientTop;
+    const bottom = top + pane.clientHeight;
+    if (titles[first].top < top) pane.scrollTop += Math.floor(titles[first].top - top);
+    else if (titles[last].bottom > bottom) pane.scrollTop += Math.ceil(titles[last].bottom - bottom);
+  }
+
   function setCursor(row, scroll = false) {
     const previous = keyboardCursorID;
     keyboardCursorID = row?.dataset.articleId || "";
-    for (const item of articleRows()) item.classList.toggle("keyboard-cursor", item === row);
-    if (scroll && row) row.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const rows = articleRows();
+    for (const item of rows) item.classList.toggle("keyboard-cursor", item === row);
+    if (scroll && row) scrollToCursor(rows, rows.indexOf(row));
     const status = document.querySelector("#keyboard-status");
     if (status && previous !== keyboardCursorID) status.textContent = row?.querySelector("h2")?.textContent || "";
   }
