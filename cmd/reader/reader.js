@@ -165,7 +165,7 @@
       currentContext = nextContext;
       if (options.history === "replace") history.replaceState({}, "", response.url);
       else if (options.history !== "none") history.pushState({}, "", response.url);
-      if (!options.keepReaderScroll && !document.querySelector(".subscription-manager[open]")) {
+      if (!options.keepReaderScroll && !document.querySelector("dialog[open]")) {
         (nextID ? nextReader : document.querySelector("#list-pane")).focus({ preventScroll: true });
         if (matchMedia("(max-width: 600px)").matches) window.scrollTo(0, nextID ? 0 : mobileListScroll);
       }
@@ -397,11 +397,27 @@
     }
   }
 
+  async function focusSearch() {
+    const selector = '[data-workspace-search] input[type="search"]';
+    const search = document.querySelector(selector);
+    if (!search.getClientRects().length) {
+      const close = document.querySelector(".reader-toolbar [data-workspace-link]");
+      if (close) await navigate(close.href);
+    }
+    document.querySelector(selector).focus();
+  }
+
   document.addEventListener("keydown", event => {
     const target = event.target instanceof Element ? event.target : document.activeElement;
     if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || document.querySelector(".subscription-manager[open]")) return;
-    if (event.key === " " && selectedID()) {
+    if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || document.querySelector("dialog[open]")) return;
+    if (event.key === "/") {
+      event.preventDefault();
+      if (!event.repeat) void focusSearch();
+    } else if (event.key === "?") {
+      event.preventDefault();
+      if (!event.repeat) document.querySelector("#shortcuts-dialog").showModal();
+    } else if (event.key === " " && selectedID()) {
       if (target?.closest('button, summary, a, [role="button"]')) return;
       const pane = document.querySelector("#reader-pane");
       if (!pane || getComputedStyle(pane).display === "none") return;
@@ -477,6 +493,10 @@
   }, true);
 
   document.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-show-shortcuts]")) {
+      document.querySelector("#shortcuts-dialog").showModal();
+      return;
+    }
     const orderButton = event.target.closest("[data-folder-step]");
     if (orderButton) {
       if (folderOrderPending) return;
