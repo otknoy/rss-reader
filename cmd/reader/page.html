@@ -40,6 +40,10 @@ summary { cursor: pointer; }
 .list-pane .add { position: static; }
 .list-pane .add-panel { left: 0; right: 0; width: auto; }
 .article.selected { background: #222b26; border-left: 2px solid var(--accent); padding-left: 10px; }
+.article.keyboard-cursor { outline: 1px solid var(--accent); outline-offset: -1px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.shortcuts-help { margin-top: 24px; color: var(--muted); font-size: 12px; }
+.shortcuts-help p { line-height: 2; }
 .article[aria-busy="true"] { opacity: .6; }
 .workspace-error { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: calc(100vw - 32px); padding: 12px 18px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: #f0a69c; }
 .list-pane .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
@@ -171,8 +175,8 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     </div>
   </section>
 </aside>
-<main id="workspace" class="workspace">
-<section id="list-pane" class="list-pane" aria-label="記事一覧" tabindex="-1">
+<main id="workspace" class="workspace" aria-keyshortcuts="j k i f Space Shift+Space">
+<section id="list-pane" data-page="{{.Result.Page}}" class="list-pane" aria-label="記事一覧" tabindex="-1">
 <header>
   <p class="heading">{{if eq .Filter "unread"}}未読{{else if eq .Filter "favorites"}}お気に入り{{else}}記事一覧{{end}}</p>
   <div class="header-actions">
@@ -240,18 +244,23 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
           <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
           <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
         </form>
-        <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer">元記事 ↗</a>
+        <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
       </div>
     </div>
   </article>
   {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「追加」から登録してください。{{end}}</p>{{end}}
   {{if gt .Result.Pages 1}}
   <nav class="pagination" aria-label="ページ送り">
-    <span>{{if .Previous}}<a class="button" data-workspace-link href="{{.Previous}}">前へ</a>{{end}}</span>
+    <span>{{if .Previous}}<a class="button" data-workspace-link data-keyboard-page="previous" href="{{.Previous}}">前へ</a>{{end}}</span>
     <span class="muted">{{.Result.Page}} / {{.Result.Pages}}</span>
-    <span>{{if .Next}}<a class="button" data-workspace-link href="{{.Next}}">次へ</a>{{end}}</span>
+    <span>{{if .Next}}<a class="button" data-workspace-link data-keyboard-page="next" href="{{.Next}}">次へ</a>{{end}}</span>
   </nav>
   {{end}}
+  <details class="shortcuts-help">
+    <summary>キーボード操作</summary>
+    <p>j / k：次・前の記事を開いて既読にする<br>i：元記事を別タブで開く<br>f：お気に入りを切り替え<br>Space / Shift + Space：本文を下・上へスクロール</p>
+  </details>
+  <span id="keyboard-status" class="visually-hidden" role="status" aria-atomic="true"></span>
 </section>
 <section id="reader-pane" class="reader-pane" aria-label="記事の本文" tabindex="-1">
 {{if .Detail}}
@@ -261,7 +270,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <div class="meta"><span>{{.SourceName}}</span><time>{{date .PublishedAt}}</time></div>
     <h1>{{.Title}}</h1>
     <div class="actions">
-      <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer">元記事 ↗</a>
+      <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
       <form method="post" action="/articles/{{.ID}}/state">
         <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
         <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>

@@ -6,6 +6,10 @@
   let navigationGeneration = 0;
   let currentContext = contextKey(location.href);
   let mobileListScroll = 0;
+  let keyboardCursorID = selectedID();
+  let pageMovePending = false;
+  let unreadGap = null;
+  let favoritePending = false;
 
   function contextKey(raw) {
     const url = new URL(raw, location.href);
@@ -65,6 +69,7 @@
       const nextID = selectedID(next);
       const readerScroll = oldReader.scrollTop;
       const listScroll = oldList.scrollTop;
+      const cursorIndex = articleRows().findIndex(row => row.dataset.articleId === keyboardCursorID);
       if (!oldID && nextID) mobileListScroll = window.scrollY;
 
       // Selecting an article only replaces the right column, keeping the list's DOM and scroll.
@@ -97,6 +102,27 @@
         }
         document.querySelector("#list-pane .notice")?.remove();
         oldList.scrollTop = listScroll;
+      }
+
+      const rows = articleRows();
+      if (options.markRead && nextID) {
+        const row = rows.find(item => item.dataset.articleId === nextID);
+        // The unread filter removes the article. Keep its former position as a gap.
+        unreadGap = row ? null : {
+          id: nextID,
+          index: oldList.dataset.page === nextList.dataset.page ? options.readIndex : rows.length,
+        };
+        setCursor(row, true);
+      } else if (options.cursorEdge) {
+        unreadGap = null;
+        setCursor(options.cursorEdge === "first" ? rows[0] : rows.at(-1), true);
+      } else if (!sameContext || nextID !== oldID) {
+        unreadGap = null;
+        setCursor(rows.find(row => row.dataset.articleId === nextID));
+      } else if (unreadGap?.id === nextID) {
+        setCursor(null);
+      } else {
+        setCursor(rows.find(row => row.dataset.articleId === keyboardCursorID) || (cursorIndex >= 0 ? rows[Math.min(cursorIndex, rows.length - 1)] : null));
       }
 
       currentContext = contextKey(response.url);
@@ -144,7 +170,107 @@
     }, hadError ? 30000 : 5000);
   }
 
+  function articleRows() {
+    return Array.from(document.querySelectorAll("#list-pane [data-article-id]"));
+  }
+
+  function setCursor(row, scroll = false) {
+    const previous = keyboardCursorID;
+    keyboardCursorID = row?.dataset.articleId || "";
+    for (const item of articleRows()) item.classList.toggle("keyboard-cursor", item === row);
+    if (scroll && row) row.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const status = document.querySelector("#keyboard-status");
+    if (status && previous !== keyboardCursorID) status.textContent = row?.querySelector("h2")?.textContent || "";
+  }
+
+  async function moveCursor(delta) {
+    if (pageMovePending || favoritePending) return;
+    pageMovePending = true;
+    try {
+      let rows = articleRows();
+      const index = rows.findIndex(row => row.dataset.articleId === keyboardCursorID);
+      const gap = unreadGap?.id === selectedID() ? unreadGap.index : null;
+      let next = gap !== null ? Math.min(gap, rows.length) + (delta > 0 ? 0 : -1) : index < 0 ? 0 : index + delta;
+      if (!rows[next]) {
+        const direction = delta > 0 ? "next" : "previous";
+        const link = document.querySelector(`[data-keyboard-page="${direction}"]`);
+        if (!link) return;
+        const url = new URL(link.href);
+        if (selectedID()) url.searchParams.set("article", selectedID());
+        await navigate(url, { cursorEdge: delta > 0 ? "first" : "last", keepReaderScroll: true });
+        rows = articleRows();
+        next = rows.findIndex(row => row.dataset.articleId === keyboardCursorID);
+      }
+      const row = rows[next];
+      if (!row) return;
+      setCursor(row, true);
+      const url = new URL(row.querySelector("a[data-workspace-link]").href);
+      const form = row.querySelector('input[name="kind"][value="read"]').form;
+      await navigate(form.action, {
+        method: "POST",
+        body: new URLSearchParams({ kind: "read", value: "true", return_to: url.pathname + url.search }),
+        refreshList: true,
+        markRead: true,
+        readIndex: next,
+      });
+    } finally {
+      pageMovePending = false;
+    }
+  }
+
+  function openOriginal() {
+    const scope = document.querySelector(".reader") || articleRows().find(row => row.dataset.articleId === keyboardCursorID);
+    scope?.querySelector("[data-original-link]")?.click();
+  }
+
+  async function toggleCursorFavorite() {
+    if (favoritePending || pageMovePending) return;
+    const row = articleRows().find(item => item.dataset.articleId === keyboardCursorID);
+    const scope = row || document.querySelector(".reader");
+    const form = scope && Array.from(scope.querySelectorAll("form")).find(item => item.querySelector('input[name="kind"]')?.value === "favorite");
+    if (!form) return;
+    favoritePending = true;
+    try {
+      await navigate(form.action, {
+        method: "POST",
+        body: new URLSearchParams(new FormData(form)),
+        history: "replace",
+        refreshList: true,
+        keepReaderScroll: true,
+      });
+    } finally {
+      favoritePending = false;
+    }
+  }
+
+  document.addEventListener("keydown", event => {
+    const target = event.target instanceof Element ? event.target : document.activeElement;
+    if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || document.querySelector(".add[open]")) return;
+    if (event.key === " " && selectedID()) {
+      if (target?.closest('button, summary, a, [role="button"]')) return;
+      const pane = document.querySelector("#reader-pane");
+      if (!pane || getComputedStyle(pane).display === "none") return;
+      event.preventDefault();
+      pane.scrollBy({
+        top: (event.shiftKey ? -1 : 1) * Math.max(80, pane.clientHeight * .8),
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      });
+    } else if (!event.shiftKey && (event.key === "j" || event.key === "k")) {
+      event.preventDefault();
+      void moveCursor(event.key === "j" ? 1 : -1);
+    } else if (!event.shiftKey && event.key === "i") {
+      event.preventDefault();
+      if (!event.repeat) openOriginal();
+    } else if (!event.shiftKey && event.key === "f") {
+      event.preventDefault();
+      if (!event.repeat) void toggleCursorFavorite();
+    }
+  });
+
   document.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-article-id]");
+    if (row) setCursor(row);
     const link = event.target.closest("a[data-workspace-link]");
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target) return;
     if (new URL(link.href).origin !== location.origin) return;
@@ -173,5 +299,6 @@
   });
 
   addEventListener("popstate", () => void navigate(location.href, { history: "none" }));
+  setCursor(articleRows().find(row => row.dataset.articleId === keyboardCursorID));
   scheduleContentCheck();
 })();
