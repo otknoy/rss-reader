@@ -9,7 +9,7 @@
   let mobileListScroll = 0;
   let keyboardCursorID = selectedID();
   let pageMovePending = false;
-  let unreadGap = null;
+  const retainedReadRows = new Map();
   let favoritePending = false;
 
   function contextKey(raw) {
@@ -75,6 +75,8 @@
 
       // Selecting an article only replaces the right column, keeping the list's DOM and scroll.
       if (!sameContext || options.refreshList) {
+        const nextContext = contextKey(response.url);
+        restoreReadRows(oldList, nextList, nextContext, response.url, options.stateChange);
         oldList.replaceWith(nextList);
         nextList.scrollTop = sameContext ? listScroll : 0;
         const sidebar = document.querySelector(".sidebar");
@@ -108,20 +110,11 @@
       const rows = articleRows();
       if (options.markRead && nextID) {
         const row = rows.find(item => item.dataset.articleId === nextID);
-        // The unread filter removes the article. Keep its former position as a gap.
-        unreadGap = row ? null : {
-          id: nextID,
-          index: oldList.dataset.page === nextList.dataset.page ? options.readIndex : rows.length,
-        };
         setCursor(row, true);
       } else if (options.cursorEdge) {
-        unreadGap = null;
         setCursor(options.cursorEdge === "first" ? rows[0] : rows.at(-1), true);
       } else if (!sameContext || nextID !== oldID) {
-        unreadGap = null;
         setCursor(rows.find(row => row.dataset.articleId === nextID));
-      } else if (unreadGap?.id === nextID) {
-        setCursor(null);
       } else {
         setCursor(rows.find(row => row.dataset.articleId === keyboardCursorID) || (cursorIndex >= 0 ? rows[Math.min(cursorIndex, rows.length - 1)] : null));
       }
@@ -177,6 +170,56 @@
     }, requestNow ? 0 : hadError ? 30000 : 5000);
   }
 
+  function restoreReadRows(oldList, nextList, context, url, change) {
+    const retained = retainedReadRows.get(context) || new Map();
+    if (change?.kind === "read" && change.value === "false") {
+      for (const rows of retainedReadRows.values()) rows.delete(change.id);
+    }
+    if (change?.kind === "favorite") {
+      for (const rows of retainedReadRows.values()) {
+        const row = rows.get(change.id)?.row;
+        const button = row?.querySelector(".star");
+        if (!button) continue;
+        const favorite = change.value === "true";
+        button.form.elements.namedItem("value").value = String(!favorite);
+        button.classList.toggle("favorite", favorite);
+        button.setAttribute("aria-pressed", String(favorite));
+        button.setAttribute("aria-label", favorite ? "お気に入りを解除" : "お気に入りに登録");
+        button.textContent = favorite ? "★" : "☆";
+      }
+    }
+    if (new URL(url).searchParams.get("view") !== "unread") return;
+    if (context === currentContext && change?.kind === "read" && change.value === "true") {
+      const rows = Array.from(oldList.querySelectorAll("[data-article-id]"));
+      const index = rows.findIndex(row => row.dataset.articleId === change.id);
+      if (index >= 0) {
+        const row = rows[index].cloneNode(true);
+        row.classList.add("read");
+        const form = row.querySelector('input[name="kind"][value="read"]').form;
+        form.elements.namedItem("value").value = "false";
+        form.querySelector("button").textContent = "未読に戻す";
+        retained.set(change.id, { row, index });
+        retainedReadRows.set(context, retained);
+      }
+    }
+
+    const rows = Array.from(nextList.querySelectorAll("[data-article-id]"));
+    const empty = nextList.querySelector(".empty");
+    const end = nextList.querySelector(".pagination, .shortcuts-help");
+    for (const [id, { row, index }] of Array.from(retained).sort((a, b) => a[1].index - b[1].index)) {
+      if (rows.some(item => item.dataset.articleId === id)) continue;
+      const copy = row.cloneNode(true);
+      nextList.insertBefore(copy, rows[index] || empty || end);
+      rows.splice(index, 0, copy);
+    }
+    if (rows.length) empty?.remove();
+  }
+
+  function stateChange(form, data) {
+    const id = form.closest("[data-article-id], [data-reading-id]")?.dataset;
+    return { id: id?.articleId || id?.readingId, kind: data.get("kind"), value: data.get("value") };
+  }
+
   function articleRows() {
     return Array.from(document.querySelectorAll("#list-pane [data-article-id]"));
   }
@@ -196,8 +239,7 @@
     try {
       let rows = articleRows();
       const index = rows.findIndex(row => row.dataset.articleId === keyboardCursorID);
-      const gap = unreadGap?.id === selectedID() ? unreadGap.index : null;
-      let next = gap !== null ? Math.min(gap, rows.length) + (delta > 0 ? 0 : -1) : index < 0 ? 0 : index + delta;
+      let next = index < 0 ? 0 : index + delta;
       if (!rows[next]) {
         const direction = delta > 0 ? "next" : "previous";
         const link = document.querySelector(`[data-keyboard-page="${direction}"]`);
@@ -218,7 +260,7 @@
         body: new URLSearchParams({ kind: "read", value: "true", return_to: url.pathname + url.search }),
         refreshList: true,
         markRead: true,
-        readIndex: next,
+        stateChange: { id: row.dataset.articleId, kind: "read", value: "true" },
       });
     } finally {
       pageMovePending = false;
@@ -236,11 +278,13 @@
     const scope = row || document.querySelector(".reader");
     const form = scope && Array.from(scope.querySelectorAll("form")).find(item => item.querySelector('input[name="kind"]')?.value === "favorite");
     if (!form) return;
+    const body = new URLSearchParams(new FormData(form));
     favoritePending = true;
     try {
       await navigate(form.action, {
         method: "POST",
-        body: new URLSearchParams(new FormData(form)),
+        body,
+        stateChange: stateChange(form, body),
         history: "replace",
         refreshList: true,
         keepReaderScroll: true,
@@ -295,9 +339,11 @@
       void navigate(url);
     } else if (form.method.toLowerCase() === "post") {
       event.preventDefault();
+      const data = new FormData(form);
       void navigate(form.action, {
         method: "POST",
-        body: form.enctype === "multipart/form-data" ? new FormData(form) : new URLSearchParams(new FormData(form)),
+        body: form.enctype === "multipart/form-data" ? data : new URLSearchParams(data),
+        stateChange: stateChange(form, data),
         history: "replace",
         refreshList: true,
         keepReaderScroll: true,
