@@ -347,6 +347,37 @@
     }
   }
 
+  async function moveSidebarSelection(delta) {
+    if (pageMovePending || favoritePending) return;
+    const sidebar = document.querySelector(".sidebar");
+    const filters = [...sidebar.querySelectorAll(".filters a[data-workspace-link]")];
+    const folders = [...sidebar.querySelectorAll("[data-sidebar-folder] > summary > a")];
+    const links = [...filters, ...folders];
+    const current = folders.find(link => link.hasAttribute("aria-current")) ||
+      filters.find(link => link.classList.contains("active"));
+    const index = links.indexOf(current);
+    const next = index < 0 ? 0 : index + delta;
+    if (!links[next]) return;
+
+    const url = new URL(links[next].href);
+    // Each shortcut selects one sidebar destination without carrying over the previous filter.
+    if (next < filters.length) {
+      url.searchParams.delete("folder");
+      url.searchParams.delete("feed");
+    } else {
+      url.searchParams.delete("view");
+    }
+    pageMovePending = true;
+    try {
+      if (await navigate(url) && next >= filters.length && !matchMedia("(max-width: 600px)").matches) {
+        document.querySelector(".sidebar [data-sidebar-folder] > summary > a[aria-current]")
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    } finally {
+      pageMovePending = false;
+    }
+  }
+
   function openOriginal() {
     const scope = document.querySelector(".reader") || articleRows().find(row => row.dataset.articleId === keyboardCursorID);
     scope?.querySelector("[data-original-link]")?.click();
@@ -387,9 +418,11 @@
         top: (event.shiftKey ? -1 : 1) * Math.max(80, pane.clientHeight * .8),
         behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
       });
-    } else if (!event.shiftKey && (event.key === "j" || event.key === "k")) {
+    } else if (event.key.toLowerCase() === "j" || event.key.toLowerCase() === "k") {
       event.preventDefault();
-      void moveCursor(event.key === "j" ? 1 : -1);
+      const delta = event.key.toLowerCase() === "j" ? 1 : -1;
+      if (event.shiftKey) void moveSidebarSelection(delta);
+      else void moveCursor(delta);
     } else if (!event.shiftKey && event.key === "i") {
       event.preventDefault();
       if (!event.repeat) openOriginal();
