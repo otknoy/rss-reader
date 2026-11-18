@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -23,19 +25,24 @@ type Article struct {
 
 // Query selects articles by text, state, feed and page.
 type Query struct {
-	Text, View  string
-	FeedID      int64
-	FeedIDs     []int64
-	Page        int
-	NewestFirst bool
+	Text, View   string
+	FeedID       int64
+	FeedIDs      []int64
+	Page         int
+	NewestFirst  bool
+	AnchorID     int64
+	BeforeAnchor bool
 }
 
 // Result contains a page of articles and aggregate counts.
 type Result struct {
-	Items       []Article
-	Total       int
-	Page, Pages int
+	Items                []Article
+	Total                int
+	Page, Pages          int
+	HasPrevious, HasNext bool
 }
+
+const pageSize = 20
 
 // Store persists articles in the articles database.
 type Store struct{ db *sql.DB }
@@ -143,21 +150,39 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	// Escape LIKE metacharacters so user queries are literal substring searches.
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(q.Text)) + "%"
 	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR full_body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($4::bigint[] IS NULL OR source_id=ANY($4::bigint[])) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='read' AND is_read) OR ($3='favorites' AND favorite) OR ($3='unread-favorites' AND NOT is_read AND favorite))`
-	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM articles.entries`+where, pattern, q.FeedID, q.View, q.FeedIDs).Scan(&r.Total); err != nil {
-		return r, err
+	args := []any{pattern, q.FeedID, q.View, q.FeedIDs}
+	descending := q.NewestFirst != (q.AnchorID > 0 && q.BeforeAnchor)
+	order, compare := "published_at ASC, id ASC", ">"
+	if descending {
+		order, compare = "published_at DESC, id DESC", "<"
 	}
-	r.Pages = (r.Total + 19) / 20
-	if r.Pages < 1 {
-		r.Pages = 1
+	offset := 0
+	if q.AnchorID > 0 {
+		// The boundary row can be read already. Its sort key still anchors the next page.
+		boundary := "(published_at,id) " + compare + " (SELECT published_at,id FROM articles.entries WHERE id=$5)"
+		args = append(args, q.AnchorID)
+		var onRequestedSide, onOtherSide int
+		count := "SELECT count(*), count(*) FILTER (WHERE " + boundary + "), count(*) FILTER (WHERE NOT (" + boundary + "))"
+		if err := s.db.QueryRowContext(ctx, count+" FROM articles.entries"+where, args...).Scan(&r.Total, &onRequestedSide, &onOtherSide); err != nil {
+			return r, err
+		}
+		r.HasPrevious, r.HasNext = onOtherSide > 0, onRequestedSide > pageSize
+		if q.BeforeAnchor {
+			r.HasPrevious, r.HasNext = r.HasNext, r.HasPrevious
+		}
+		where += " AND " + boundary
+	} else {
+		if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM articles.entries`+where, args...).Scan(&r.Total); err != nil {
+			return r, err
+		}
+		r.Pages = max(1, (r.Total+pageSize-1)/pageSize)
+		r.Page = min(r.Page, r.Pages)
+		r.HasPrevious, r.HasNext = r.Page > 1, r.Page < r.Pages
+		offset = (r.Page - 1) * pageSize
 	}
-	if r.Page > r.Pages {
-		r.Page = r.Pages
-	}
-	order := "published_at ASC, id ASC"
-	if q.NewestFirst {
-		order = "published_at DESC, id DESC"
-	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries`+where+` ORDER BY `+order+` LIMIT 20 OFFSET $5`, pattern, q.FeedID, q.View, q.FeedIDs, (r.Page-1)*20)
+	args = append(args, pageSize, offset)
+	paging := fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries`+where+` ORDER BY `+order+paging, args...)
 	if err != nil {
 		return r, err
 	}
@@ -168,6 +193,9 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 			return r, err
 		}
 		r.Items = append(r.Items, a)
+	}
+	if q.AnchorID > 0 && q.BeforeAnchor {
+		slices.Reverse(r.Items)
 	}
 	return r, rows.Err()
 }

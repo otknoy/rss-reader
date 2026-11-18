@@ -9,7 +9,6 @@
   let mobileListScroll = 0;
   let keyboardCursorID = selectedID();
   let pageMovePending = false;
-  const retainedReadRows = new Map();
   let favoritePending = false;
 
   const pendingFolderStates = new Map();
@@ -85,7 +84,6 @@
             updateFavoriteButton(article, change.value === "true");
           }
         }
-        updateRetainedFavorites(change);
         return;
       }
       const next = new DOMParser().parseFromString(html, "text/html");
@@ -103,11 +101,23 @@
       const cursorIndex = articleRows().findIndex(row => row.dataset.articleId === keyboardCursorID);
       if (!oldID && nextID) mobileListScroll = window.scrollY;
 
-      // Selecting an article only replaces the right column, keeping the list's DOM and scroll.
-      if (!sameContext || options.refreshList) {
-        restoreReadRows(oldList, nextList, nextContext, response.url, options.stateChange);
+      const filter = new URL(response.url).searchParams.get("view");
+      const keepUnreadPage = sameContext && (filter === "unread" || filter === "unread-favorites") &&
+        (change?.kind === "read" || change?.kind === "favorite");
+      const refreshWorkspace = !sameContext || options.refreshList;
+      if (keepUnreadPage) {
+        const row = articleRows().find(item => item.dataset.articleId === change.id);
+        if (row && change.kind === "read") updateReadRow(row, change.value === "true");
+        if (row && change.kind === "favorite") {
+          if (change.value === "true") updateFavoriteButton(row, true);
+          else row.remove();
+        }
+        oldList.querySelector(".results .muted").textContent = nextList.querySelector(".results .muted").textContent;
+      } else if (refreshWorkspace) {
         oldList.replaceWith(nextList);
         nextList.scrollTop = sameContext ? listScroll : 0;
+      }
+      if (refreshWorkspace) {
         const sidebar = document.querySelector(".sidebar");
         const sidebarScroll = sidebar.scrollTop;
         restoreFolders(nextSidebar);
@@ -141,11 +151,7 @@
           input.value = nextList.querySelector('input[name="return_to"]')?.value || response.url;
         }
       }
-      // Header forms also retain the current selected article.
-      if (sameContext && !options.refreshList) {
-        for (const input of document.querySelectorAll('#list-pane input[name="return_to"]')) {
-          input.value = nextList.querySelector('input[name="return_to"]')?.value || response.url;
-        }
+      if (sameContext && (!options.refreshList || keepUnreadPage)) {
         document.querySelector("#list-pane .notice")?.remove();
         oldList.scrollTop = listScroll;
       }
@@ -229,46 +235,11 @@
     button.textContent = favorite ? "★" : "☆";
   }
 
-  function updateRetainedFavorites(change) {
-    const favorite = change.value === "true";
-    for (const [context, rows] of retainedReadRows) {
-      if (!favorite && isFavoritesView(new URLSearchParams(context))) rows.delete(change.id);
-      else updateFavoriteButton(rows.get(change.id)?.row, favorite);
-    }
-  }
-
-  function restoreReadRows(oldList, nextList, context, url, change) {
-    const retained = retainedReadRows.get(context) || new Map();
-    if (change?.kind === "read" && change.value === "false") {
-      for (const rows of retainedReadRows.values()) rows.delete(change.id);
-    }
-    if (change?.kind === "favorite") updateRetainedFavorites(change);
-    const filter = new URL(url).searchParams.get("view");
-    if (filter !== "unread" && filter !== "unread-favorites") return;
-    if (context === currentContext && change?.kind === "read" && change.value === "true") {
-      const rows = Array.from(oldList.querySelectorAll("[data-article-id]"));
-      const index = rows.findIndex(row => row.dataset.articleId === change.id);
-      if (index >= 0) {
-        const row = rows[index].cloneNode(true);
-        row.classList.add("read");
-        const form = row.querySelector('input[name="kind"][value="read"]').form;
-        form.elements.namedItem("value").value = "false";
-        form.querySelector("button").textContent = "未読に戻す";
-        retained.set(change.id, { row, index });
-        retainedReadRows.set(context, retained);
-      }
-    }
-
-    const rows = Array.from(nextList.querySelectorAll("[data-article-id]"));
-    const empty = nextList.querySelector(".empty");
-    const end = nextList.querySelector(".pagination, #keyboard-status");
-    for (const [id, { row, index }] of Array.from(retained).sort((a, b) => a[1].index - b[1].index)) {
-      if (rows.some(item => item.dataset.articleId === id)) continue;
-      const copy = row.cloneNode(true);
-      nextList.insertBefore(copy, rows[index] || empty || end);
-      rows.splice(index, 0, copy);
-    }
-    if (rows.length) empty?.remove();
+  function updateReadRow(row, read) {
+    row.classList.toggle("read", read);
+    const form = row.querySelector('input[name="kind"][value="read"]').form;
+    form.elements.namedItem("value").value = String(!read);
+    form.querySelector("button").textContent = read ? "未読に戻す" : "既読にする";
   }
 
   function stateChange(form, data) {
@@ -339,7 +310,7 @@
         if (!link) return;
         const url = new URL(link.href);
         if (selectedID()) url.searchParams.set("article", selectedID());
-        await navigate(url, { cursorEdge: delta > 0 ? "first" : "last", keepReaderScroll: true });
+        if (!await navigate(url, { cursorEdge: delta > 0 ? "first" : "last", keepReaderScroll: true })) return;
         rows = articleRows();
         next = rows.findIndex(row => row.dataset.articleId === keyboardCursorID);
       }

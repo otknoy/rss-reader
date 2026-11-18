@@ -341,10 +341,10 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     </div>
   </article>
   {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「購読を管理」からフィードを登録できます。{{end}}</p>{{end}}
-  {{if gt .Result.Pages 1}}
+  {{if or .Previous .Next}}
   <nav class="pagination" aria-label="ページ送り">
     <span>{{if .Previous}}<a class="button" data-workspace-link data-keyboard-page="previous" href="{{.Previous}}">前へ</a>{{end}}</span>
-    <span class="muted">{{.Result.Page}} / {{.Result.Pages}}</span>
+    {{if not .UnreadOnly}}<span class="muted">{{.Result.Page}} / {{.Result.Pages}}</span>{{end}}
     <span>{{if .Next}}<a class="button" data-workspace-link data-keyboard-page="next" href="{{.Next}}">次へ</a>{{end}}</span>
   </nav>
   {{end}}

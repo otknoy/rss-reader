@@ -182,6 +182,16 @@ func (a *application) base(r *http.Request) (view, error) {
 	if filter != "unread" && filter != "read" && filter != "favorites" && filter != "unread-favorites" {
 		filter = ""
 	}
+	unreadOnly := filter == "unread" || filter == "unread-favorites"
+	var anchorID int64
+	var beforeAnchor bool
+	if unreadOnly {
+		anchorID, _ = strconv.ParseInt(q.Get("before"), 10, 64)
+		beforeAnchor = anchorID > 0
+		if !beforeAnchor {
+			anchorID, _ = strconv.ParseInt(q.Get("after"), 10, 64)
+		}
+	}
 	folders, err := a.feeds.Folders(r.Context())
 	if err != nil {
 		return view{}, err
@@ -217,7 +227,10 @@ func (a *application) base(r *http.Request) (view, error) {
 			}
 		}
 	}
-	result, err := a.search.Find(r.Context(), articles.Query{Text: q.Get("q"), View: filter, FeedID: feedID, FeedIDs: ids, Page: p, NewestFirst: newestFirst})
+	result, err := a.search.Find(r.Context(), articles.Query{
+		Text: q.Get("q"), View: filter, FeedID: feedID, FeedIDs: ids, Page: p,
+		NewestFirst: newestFirst, AnchorID: anchorID, BeforeAnchor: beforeAnchor,
+	})
 	if err != nil {
 		return view{}, err
 	}
@@ -239,16 +252,36 @@ func (a *application) base(r *http.Request) (view, error) {
 		back += "?" + q.Encode()
 	}
 	prev, next := "", ""
-	if result.Page > 1 {
-		q.Set("page", strconv.Itoa(result.Page-1))
-		prev = "/?" + q.Encode()
-	}
-	if result.Page < result.Pages {
-		q.Set("page", strconv.Itoa(result.Page+1))
-		next = "/?" + q.Encode()
+	if unreadOnly {
+		q.Del("page")
+		q.Del("before")
+		q.Del("after")
+		if len(result.Items) > 0 {
+			if result.HasPrevious {
+				q.Set("before", strconv.FormatInt(result.Items[0].ID, 10))
+				prev = "/?" + q.Encode()
+				q.Del("before")
+			}
+			if result.HasNext {
+				q.Set("after", strconv.FormatInt(result.Items[len(result.Items)-1].ID, 10))
+				next = "/?" + q.Encode()
+				q.Del("after")
+			}
+		} else if anchorID > 0 && result.Total > 0 {
+			// Concurrent changes can empty an anchored page. Offer the beginning of the list.
+			prev = "/?" + q.Encode()
+		}
+	} else {
+		if result.HasPrevious {
+			q.Set("page", strconv.Itoa(result.Page-1))
+			prev = "/?" + q.Encode()
+		}
+		if result.HasNext {
+			q.Set("page", strconv.Itoa(result.Page+1))
+			next = "/?" + q.Encode()
+		}
 	}
 	q.Del("page")
-	unreadOnly := filter == "unread" || filter == "unread-favorites"
 	favoritesOnly := filter == "favorites" || filter == "unread-favorites"
 	filterURL := func(unread, favorite bool) string {
 		switch {

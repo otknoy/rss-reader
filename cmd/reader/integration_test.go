@@ -673,6 +673,32 @@ func TestPrototypeIntegration(t *testing.T) {
 				t.Fatalf("unexpected sort order or pagination for %q (status %d)", tc.query, w.Code)
 			}
 		}
+
+		const unread = "/?q=sort-fixture&view=unread"
+		fixture, err := as.Search(ctx, articles.Query{Text: "sort-fixture"})
+		if err != nil || len(fixture.Items) != 20 {
+			t.Fatalf("load unread page fixture: %v", err)
+		}
+		boundary := fixture.Items[19].ID
+		firstPage := request("GET", unread, nil)
+		if firstPage.Code != http.StatusOK ||
+			!strings.Contains(firstPage.Body.String(), fmt.Sprintf("after=%d&amp;q=sort-fixture&amp;view=unread", boundary)) {
+			t.Fatalf("unread next link did not use the last article as its anchor: %d", firstPage.Code)
+		}
+		// Reading every visible row must not skip the remaining unread row on the next page.
+		for _, item := range fixture.Items {
+			if err := as.SetState(ctx, item.ID, "read", true); err != nil {
+				t.Fatal(err)
+			}
+		}
+		nextUnread := request("GET", fmt.Sprintf("%s&after=%d", unread, boundary), nil)
+		if nextUnread.Code != http.StatusOK || !strings.Contains(nextUnread.Body.String(), ">sort-fixture-21</a>") {
+			t.Fatalf("next page lost the remaining unread article: %d", nextUnread.Code)
+		}
+		reversed := request("GET", fmt.Sprintf("%s&sort=newest&before=%d", unread, boundary), nil)
+		if reversed.Code != http.StatusOK || !strings.Contains(reversed.Body.String(), ">sort-fixture-21</a>") {
+			t.Fatalf("previous page lost the remaining article in newest-first order: %d", reversed.Code)
+		}
 	})
 
 }
