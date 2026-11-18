@@ -9,8 +9,7 @@
 
   function contextKey(raw) {
     const url = new URL(raw, location.href);
-    url.searchParams.delete("article");
-    url.searchParams.delete("message");
+    for (const key of ["article", "message", "added", "existing", "skipped"]) url.searchParams.delete(key);
     url.searchParams.sort();
     return url.searchParams.toString();
   }
@@ -97,6 +96,7 @@
           input.value = nextList.querySelector('input[name="return_to"]')?.value || response.url;
         }
         document.querySelector("#list-pane .notice")?.remove();
+        oldList.scrollTop = listScroll;
       }
 
       currentContext = contextKey(response.url);
@@ -164,7 +164,7 @@
       event.preventDefault();
       void navigate(form.action, {
         method: "POST",
-        body: new URLSearchParams(new FormData(form)),
+        body: form.enctype === "multipart/form-data" ? new FormData(form) : new URLSearchParams(new FormData(form)),
         history: "replace",
         refreshList: true,
         keepReaderScroll: true,

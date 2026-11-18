@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net/http"
@@ -437,6 +439,123 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 		if !deletedStillExcluded {
 			t.Fatal("deleted article was queued by backfill")
+		}
+	})
+	t.Run("OPML import export and atomic merge", func(t *testing.T) {
+		existingURL := "https://opml.example.org/existing?a=1&b=2"
+		archivedURL := "https://opml.example.org/archived"
+		newURL := "https://opml.example.org/new"
+		for _, u := range []string{existingURL, archivedURL} {
+			if err := fs.Add(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+		}
+		find := func(list []feeds.Feed, url string) feeds.Feed {
+			t.Helper()
+			for _, f := range list {
+				if f.URL == url {
+					return f
+				}
+			}
+			t.Fatalf("feed not found: %s", url)
+			return feeds.Feed{}
+		}
+		initial, err := fs.List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		existing, archived := find(initial, existingURL), find(initial, archivedURL)
+		if err := fs.Record(ctx, existing.ID, feeds.FetchResult{Title: "既存の名前", TTLMinutes: 60, ETag: `"stable"`}, 30*time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if err := fs.Remove(ctx, archived.ID); err != nil {
+			t.Fatal(err)
+		}
+		before, err := fs.List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved := find(before, existingURL)
+		input := `<opml version="2.0"><body><outline text="フォルダー"><outline title="新しい名前には変更しない" xmlUrl="https://opml.example.org/existing?a=1&amp;b=2"/><outline title="日本語 &amp; 新着" xmlUrl="https://opml.example.org/new"/><outline xmlUrl="https://opml.example.org/archived"/><outline xmlUrl="https://opml.example.org/existing?a=1&amp;b=2"/><outline xmlUrl="javascript:alert(1)"/></outline></body></opml>`
+		w := httptest.NewRecorder()
+		app.routes().ServeHTTP(w, opmlUpload(t, []byte(input), "/?q=Go&view=unread"))
+		location, err := url.Parse(w.Header().Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		q := location.Query()
+		if w.Code != http.StatusSeeOther || q.Get("added") != "2" || q.Get("existing") != "2" || q.Get("skipped") != "1" || q.Get("q") != "Go" || q.Get("view") != "unread" {
+			t.Fatalf("import response: %d %s %s", w.Code, location, w.Body.String())
+		}
+		after, err := fs.List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(after) != len(before)+2 {
+			t.Fatalf("subscription count: %d -> %d", len(before), len(after))
+		}
+		unchanged := find(after, existingURL)
+		if unchanged.Title != saved.Title || unchanged.ETag != saved.ETag || unchanged.NextFetchAt == nil || !unchanged.NextFetchAt.Equal(*saved.NextFetchAt) {
+			t.Fatalf("existing subscription changed: %+v", unchanged)
+		}
+		restored := find(after, archivedURL)
+		if restored.ID != archived.ID || restored.NextFetchAt != nil {
+			t.Fatalf("reactivation lost identity or fetch schedule: %+v", restored)
+		}
+		if find(after, newURL).Title != "日本語 & 新着" {
+			t.Fatal("OPML title was lost")
+		}
+		// A syntactically broken file must not import an otherwise valid first entry.
+		if _, err := fs.ImportOPML(ctx, strings.NewReader(`<opml><body><outline xmlUrl="https://opml.example.org/partial"/></body>`)); !errors.Is(err, feeds.ErrInvalidOPML) {
+			t.Fatalf("malformed XML accepted: %v", err)
+		}
+		current, err := fs.List(ctx)
+		if err != nil || len(current) != len(after) {
+			t.Fatalf("malformed import had partial effects: %v %v", current, err)
+		}
+		var output, again bytes.Buffer
+		if err := fs.ExportOPML(ctx, &output); err != nil {
+			t.Fatal(err)
+		}
+		var document struct {
+			Version string `xml:"version,attr"`
+			Body    struct {
+				Outlines []struct {
+					URL string `xml:"xmlUrl,attr"`
+				} `xml:"outline"`
+			} `xml:"body"`
+		}
+		if err := xml.Unmarshal(output.Bytes(), &document); err != nil {
+			t.Fatal(err)
+		}
+		if document.Version != "2.0" || len(document.Body.Outlines) != len(after) || !strings.Contains(output.String(), "日本語 &amp; 新着") {
+			t.Fatalf("invalid export: %s", output.String())
+		}
+		result, err := fs.ImportOPML(ctx, bytes.NewReader(output.Bytes()))
+		if err != nil || result.Added != 0 || result.Existing != len(after) || result.Skipped != 0 {
+			t.Fatalf("round trip: %+v %v", result, err)
+		}
+		if err := fs.ExportOPML(ctx, &again); err != nil {
+			t.Fatal(err)
+		}
+		if output.String() != again.String() {
+			t.Fatal("export is not deterministic")
+		}
+		exported := request("GET", "/feeds/export.opml", nil)
+		if exported.Code != http.StatusOK || !strings.Contains(exported.Header().Get("Content-Disposition"), "subscriptions.opml") || exported.Body.String() != output.String() {
+			t.Fatalf("download response: %d %v", exported.Code, exported.Header())
+		}
+		// Simulate a DB failure after the first insert to verify transaction rollback.
+		if _, err := owner.ExecContext(ctx, `ALTER TABLE feeds.subscriptions ADD CONSTRAINT opml_test_reject CHECK (url <> 'https://opml.example.org/reject')`); err != nil {
+			t.Fatal(err)
+		}
+		failed := `<opml><body><outline xmlUrl="https://opml.example.org/rollback"/><outline xmlUrl="https://opml.example.org/reject"/></body></opml>`
+		if _, err := fs.ImportOPML(ctx, strings.NewReader(failed)); err == nil {
+			t.Fatal("expected database import failure")
+		}
+		current, err = fs.List(ctx)
+		if err != nil || len(current) != len(after) {
+			t.Fatalf("failed transaction had partial effects: %v %v", current, err)
 		}
 	})
 }

@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -63,6 +64,8 @@ func (a *application) routes() http.Handler {
 	})
 	mux.HandleFunc("GET /articles/{id}", a.detail)
 	mux.HandleFunc("POST /feeds", a.addFeed)
+	mux.HandleFunc("POST /feeds/import", a.importOPML)
+	mux.HandleFunc("GET /feeds/export.opml", a.exportOPML)
 	mux.HandleFunc("POST /feeds/{id}/remove", a.removeFeed)
 	mux.HandleFunc("POST /refresh", a.refresh)
 	mux.HandleFunc("POST /articles", a.addArticle)
@@ -85,7 +88,11 @@ func (a *application) routes() http.Handler {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; img-src https: http:; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Cache-Control", "no-store")
-		r.Body = http.MaxBytesReader(w, r.Body, 256<<10)
+		limit := int64(256 << 10)
+		if r.Method == http.MethodPost && r.URL.Path == "/feeds/import" {
+			limit = feeds.MaxOPMLBytes + (64 << 10)
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		if r.Method == http.MethodPost {
 			if err := r.ParseForm(); err != nil {
 				http.Error(w, "入力が大きすぎるか不正です", 400)
@@ -164,6 +171,9 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 	q.Del("message")
 	q.Del("article")
+	q.Del("added")
+	q.Del("existing")
+	q.Del("skipped")
 	back := "/"
 	if len(q) > 0 {
 		back += "?" + q.Encode()
@@ -185,6 +195,8 @@ func (a *application) base(r *http.Request) (view, error) {
 		message = "記事を更新しました"
 	case "fetch-error":
 		message = "取得できなかったフィードがあります。「購読フィード」の取得状況をご確認ください。"
+	case "opml-imported":
+		message = fmt.Sprintf("OPML: %d件登録・%d件重複・%d件スキップ", opmlCount(r.URL.Query().Get("added")), opmlCount(r.URL.Query().Get("existing")), opmlCount(r.URL.Query().Get("skipped")))
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
@@ -342,4 +354,12 @@ func (a *application) contentStatus(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(status); err != nil {
 		log.Printf("write content status: %v", err)
 	}
+}
+
+func opmlCount(raw string) int {
+	count, err := strconv.Atoi(raw)
+	if err != nil || count < 0 || count > 10000 {
+		return 0
+	}
+	return count
 }

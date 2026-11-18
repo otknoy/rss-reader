@@ -63,7 +63,7 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .add > summary { list-style: none; }
 .add > summary::-webkit-details-marker { display: none; }
 .add[open] > summary { border-color: var(--accent); }
-.add-panel { position: absolute; z-index: 2; top: calc(100% + 10px); right: 0; width: min(380px, calc(100vw - 40px)); padding: 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); box-shadow: 0 10px 30px #0006; }
+.add-panel { position: absolute; z-index: 2; top: calc(100% + 10px); right: 0; width: min(380px, calc(100vw - 40px)); padding: 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); box-shadow: 0 10px 30px #0006; max-height: calc(100dvh - 100px); overflow-y: auto; }
 .add-panel form { display: grid; gap: 10px; }
 .add-panel h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
 .add-panel hr { margin: 20px 0; border: 0; border-top: 1px solid var(--line); }
@@ -190,6 +190,17 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
           <button>購読する</button>
           <p class="hint">自動で記事を取得します。すぐに取得する場合は「更新」を押してください。</p>
         </form>
+        <hr>
+        <section aria-label="OPMLの読み込みと書き出し">
+          <h2>OPML</h2>
+          <form method="post" action="/feeds/import" enctype="multipart/form-data">
+            <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+            <label>OPMLファイル<input type="file" name="opml" accept=".opml,.xml,text/xml,application/xml,text/x-opml" required></label>
+            <button>インポート</button>
+            <p class="hint">既存の購読に追加します。2MB・1000フィードまで。</p>
+          </form>
+          <p><a class="button" href="/feeds/export.opml" download>OPMLをエクスポート</a></p>
+        </section>
         <hr>
         <form method="post" action="/articles">
           <h2>記事を追加</h2>
