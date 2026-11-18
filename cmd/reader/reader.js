@@ -96,13 +96,25 @@
       }
       const html = await response.text();
       if (controller.signal.aborted) return;
+      const nextContext = contextKey(response.url);
+      const sameContext = nextContext === currentContext;
+      const change = options.stateChange;
+      if (sameContext && change?.kind === "favorite" && urlView(response.url) !== "favorites") {
+        // The result set is unchanged. Keep the rows, keyboard cursor and scroll in place.
+        for (const article of document.querySelectorAll("[data-article-id], .reader[data-reading-id]")) {
+          if ((article.dataset.articleId || article.dataset.readingId) === change.id) {
+            updateFavoriteButton(article, change.value === "true");
+          }
+        }
+        updateRetainedFavorites(change);
+        return;
+      }
       const next = new DOMParser().parseFromString(html, "text/html");
       const nextReader = next.querySelector("#reader-pane");
       const nextList = next.querySelector("#list-pane");
       const nextSidebar = next.querySelector(".sidebar");
       if (!nextReader || !nextList || !nextSidebar) throw new Error("画面を読み込めませんでした。");
 
-      const sameContext = contextKey(response.url) === currentContext;
       const oldReader = document.querySelector("#reader-pane");
       const oldList = document.querySelector("#list-pane");
       const oldID = selectedID();
@@ -114,7 +126,6 @@
 
       // Selecting an article only replaces the right column, keeping the list's DOM and scroll.
       if (!sameContext || options.refreshList) {
-        const nextContext = contextKey(response.url);
         restoreReadRows(oldList, nextList, nextContext, response.url, options.stateChange);
         oldList.replaceWith(nextList);
         nextList.scrollTop = sameContext ? listScroll : 0;
@@ -172,7 +183,7 @@
         setCursor(rows.find(row => row.dataset.articleId === keyboardCursorID) || (cursorIndex >= 0 ? rows[Math.min(cursorIndex, rows.length - 1)] : null));
       }
 
-      currentContext = contextKey(response.url);
+      currentContext = nextContext;
       if (options.history === "replace") history.replaceState({}, "", response.url);
       else if (options.history !== "none") history.pushState({}, "", response.url);
       if (!options.keepReaderScroll && !document.querySelector(".subscription-manager[open]")) {
@@ -223,25 +234,33 @@
     }, requestNow ? 0 : hadError ? 30000 : 5000);
   }
 
+  function urlView(url) {
+    return new URL(url).searchParams.get("view");
+  }
+
+  function updateFavoriteButton(article, favorite) {
+    const button = article?.querySelector(".star");
+    if (!button) return;
+    button.form.elements.namedItem("value").value = String(!favorite);
+    button.classList.toggle("favorite", favorite);
+    button.setAttribute("aria-pressed", String(favorite));
+    button.setAttribute("aria-label", favorite ? "お気に入りを解除" : "お気に入りに登録");
+    button.textContent = favorite ? "★" : "☆";
+  }
+
+  function updateRetainedFavorites(change) {
+    for (const rows of retainedReadRows.values()) {
+      updateFavoriteButton(rows.get(change.id)?.row, change.value === "true");
+    }
+  }
+
   function restoreReadRows(oldList, nextList, context, url, change) {
     const retained = retainedReadRows.get(context) || new Map();
     if (change?.kind === "read" && change.value === "false") {
       for (const rows of retainedReadRows.values()) rows.delete(change.id);
     }
-    if (change?.kind === "favorite") {
-      for (const rows of retainedReadRows.values()) {
-        const row = rows.get(change.id)?.row;
-        const button = row?.querySelector(".star");
-        if (!button) continue;
-        const favorite = change.value === "true";
-        button.form.elements.namedItem("value").value = String(!favorite);
-        button.classList.toggle("favorite", favorite);
-        button.setAttribute("aria-pressed", String(favorite));
-        button.setAttribute("aria-label", favorite ? "お気に入りを解除" : "お気に入りに登録");
-        button.textContent = favorite ? "★" : "☆";
-      }
-    }
-    if (new URL(url).searchParams.get("view") !== "unread") return;
+    if (change?.kind === "favorite") updateRetainedFavorites(change);
+    if (urlView(url) !== "unread") return;
     if (context === currentContext && change?.kind === "read" && change.value === "true") {
       const rows = Array.from(oldList.querySelectorAll("[data-article-id]"));
       const index = rows.findIndex(row => row.dataset.articleId === change.id);
