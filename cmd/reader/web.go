@@ -31,7 +31,9 @@ var readerJS string
 var page = template.Must(template.New("page").Funcs(template.FuncMap{
 	"richArticle": richArticle,
 	"articleURL":  articleURL,
-	"date":        func(t time.Time) string { return t.Format("2006.01.02") },
+	"date": func(t time.Time) string {
+		return t.In(time.FixedZone("JST", 9*60*60)).Format("2006.01.02 15:04")
+	},
 	"excerpt": func(s string) string {
 		r := []rune(s)
 		if len(r) > 180 {

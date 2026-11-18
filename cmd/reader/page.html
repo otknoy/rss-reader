@@ -319,7 +319,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   <article class="article {{if .IsRead}}read{{end}} {{if $.Detail}}{{if eq $.Detail.ID .ID}}selected{{end}}{{end}}" data-article-id="{{.ID}}">
     <h2><a href="{{articleURL $.ListURL .ID}}" data-workspace-link {{if $.Detail}}{{if eq $.Detail.ID .ID}}aria-current="true"{{end}}{{end}}>{{.Title}}</a></h2>
     <div class="article-bottom">
-      <div class="meta"><span>{{.SourceName}}</span><time>{{date .PublishedAt}}</time></div>
+      <div class="meta"><span>{{.SourceName}}</span><time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time></div>
       <div class="actions">
         <form method="post" action="/articles/{{.ID}}/state">
           <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
@@ -352,7 +352,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   <div class="reader-toolbar"><span class="muted">記事</span><a class="button" href="{{.ListURL}}" data-workspace-link aria-label="記事を閉じる">閉じる</a></div>
   <article class="reader" data-reading-id="{{.Detail.ID}}" data-content-pending="{{.Detail.FullContentPending}}" data-content-error="{{if .Detail.FullFetchError}}true{{else}}false{{end}}">
   {{with .Detail}}
-    <div class="meta"><span>{{.SourceName}}</span><time>{{date .PublishedAt}}</time></div>
+    <div class="meta"><span>{{.SourceName}}</span><time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time></div>
     <h1>{{.Title}}</h1>
     <div class="actions">
       <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
