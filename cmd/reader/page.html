@@ -116,6 +116,9 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 [data-feed-drag] { cursor: grab; }
 [data-folder-drop].drop-target { background: #272d29; outline: 2px solid var(--accent); }
 .feed-list { padding: 8px 0; }
+[data-sidebar-folder] > summary { list-style-position: outside; margin-inline-start: 1.25em; }
+[data-sidebar-folder] > summary > a { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
+.folder-unread-badge { flex: none; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--bg); font-variant-numeric: tabular-nums; }
 .feed { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .feed a { color: var(--text); overflow-wrap: anywhere; }
 .feed a[aria-current="page"] { color: var(--accent); }
@@ -199,7 +202,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <div data-folder-order-list>
     {{range .Folders}}
       {{$folder := .}}
-      <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}"><summary data-folder-drop="{{.ID}}"><a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" data-workspace-link {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}>{{.Name}}</a></summary>
+      <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}"><summary data-folder-drop="{{.ID}}"><a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" data-workspace-link {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}><span>{{.Name}}</span>{{with index $.FolderUnread .ID}}<span class="folder-unread-badge"><span class="visually-hidden">未読 </span>{{.}}<span class="visually-hidden"> 件</span></span>{{end}}</a></summary>
       {{range $.Feeds}}{{if eq .FolderID $folder.ID}}      <div class="feed">
           <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
       </div>
@@ -207,7 +210,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
       </details>
     {{end}}
     </div>
-    <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0"><summary data-folder-drop="0"><a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}" data-workspace-link {{if eq .Folder "0"}}aria-current="page"{{end}}>未分類</a></summary>
+    <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0"><summary data-folder-drop="0"><a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}" data-workspace-link {{if eq .Folder "0"}}aria-current="page"{{end}}><span>未分類</span>{{with index .FolderUnread 0}}<span class="folder-unread-badge"><span class="visually-hidden">未読 </span>{{.}}<span class="visually-hidden"> 件</span></span>{{end}}</a></summary>
     {{range .Feeds}}{{if eq .FolderID 0}}      <div class="feed">
           <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
       </div>

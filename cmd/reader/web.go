@@ -49,6 +49,7 @@ type application struct {
 }
 type view struct {
 	ClosedFolders                                             map[int64]bool
+	FolderUnread                                              map[int64]int
 	Folders                                                   []feeds.Folder
 	Folder, FolderName                                        string
 	Scope                                                     string
@@ -214,6 +215,14 @@ func (a *application) base(r *http.Request) (view, error) {
 	if err != nil {
 		return view{}, err
 	}
+	unreadByFeed, err := a.articles.UnreadByFeed(r.Context())
+	if err != nil {
+		return view{}, err
+	}
+	folderUnread := make(map[int64]int)
+	for _, feed := range list {
+		folderUnread[feed.FolderID] += unreadByFeed[feed.ID]
+	}
 	q.Del("message")
 	q.Del("article")
 	q.Del("added")
@@ -249,7 +258,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
-	return view{ClosedFolders: closed, Folders: folders, Folder: folder, FolderName: folderName, Scope: scope, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
+	return view{ClosedFolders: closed, FolderUnread: folderUnread, Folders: folders, Folder: folder, FolderName: folderName, Scope: scope, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
 }
 
 func (a *application) index(w http.ResponseWriter, r *http.Request) {

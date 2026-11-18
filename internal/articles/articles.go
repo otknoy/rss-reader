@@ -113,6 +113,26 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	return affected(r, e)
 }
 
+// UnreadByFeed returns unread counts for articles from feeds.
+func (s *Store) UnreadByFeed(ctx context.Context) (counts map[int64]int, err error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT source_id, count(*) FROM articles.entries
+		WHERE source_id > 0 AND deleted_at IS NULL AND NOT is_read GROUP BY source_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, rows.Close()) }()
+	counts = make(map[int64]int)
+	for rows.Next() {
+		var id int64
+		var count int
+		if err := rows.Scan(&id, &count); err != nil {
+			return nil, err
+		}
+		counts[id] = count
+	}
+	return counts, rows.Err()
+}
+
 // Search returns matching articles and reading-state counts.
 func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	r = Result{Page: q.Page}

@@ -529,7 +529,7 @@ func TestPrototypeIntegration(t *testing.T) {
 		if emptyID == 0 {
 			t.Fatal("folder not created")
 		}
-		if w := request("GET", fmt.Sprintf("/?folder=%d", emptyID), nil); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "data-article-id=") {
+		if w := request("GET", fmt.Sprintf("/?folder=%d", emptyID), nil); w.Code != http.StatusOK || (strings.Contains(w.Body.String(), "data-article-id=") || !strings.Contains(w.Body.String(), "<span>空のフォルダー</span></a></summary>")) {
 			t.Fatalf("empty folder response: %d", w.Code)
 		}
 		for _, folderID := range []int64{0, emptyID} {
@@ -548,6 +548,13 @@ func TestPrototypeIntegration(t *testing.T) {
 
 		if err := fs.Move(ctx, existing.ID, emptyID); err != nil {
 			t.Fatal(err)
+		}
+		if err := as.Save(ctx, articles.Article{SourceID: existing.ID, URL: "https://opml.example.org/folder-unread"}); err != nil {
+			t.Fatal(err)
+		}
+		page := request("GET", "/?q=no-matching-article", nil)
+		if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<span>空のフォルダー</span><span class="folder-unread-badge"><span class="visually-hidden">未読 </span>1`) {
+			t.Fatalf("folder unread count missing from filtered page: %d", page.Code)
 		}
 		if err := fs.SaveFolder(ctx, emptyID, "改名済み"); err != nil {
 			t.Fatal(err)
