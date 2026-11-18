@@ -117,14 +117,17 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 [data-folder-drop].drop-target { background: #272d29; outline: 2px solid var(--accent); }
 .feed-list { padding: 8px 0; }
 [data-sidebar-folder] > summary { list-style-position: outside; margin-inline-start: 1.25em; }
-[data-sidebar-folder] > summary > a { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
-.folder-unread-badge { flex: none; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--bg); font-variant-numeric: tabular-nums; }
+[data-sidebar-folder] > summary > a, .feed-list .feed > a { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
+.unread-badge { flex: none; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--bg); font-variant-numeric: tabular-nums; }
 .feed { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .feed a { color: var(--text); overflow-wrap: anywhere; }
 .feed a[aria-current="page"] { color: var(--accent); }
 .error { display: block; color: #f0a69c; overflow-wrap: anywhere; margin-top: 5px; }
 .notice { margin-bottom: 18px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; color: var(--accent); }
 .results { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.sort-options { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; font-size: 12px; }
+.sort-options a { padding: 2px 8px; }
+.sort-options a[aria-current] { background: var(--surface); border-color: var(--accent); }
 .results h1 { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .article { padding: 16px 0; border-bottom: 1px solid var(--line); }
 .article h2 { margin: 0 0 5px; font-size: 16px; font-weight: 600; line-height: 1.65; overflow-wrap: anywhere; }
@@ -189,9 +192,9 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 <body>
 <div class="shell {{if .Detail}}has-detail{{end}}">
 <aside class="sidebar">
-  <a href="/" class="brand">RSS Reader</a>
+  <a href="/{{if .NewestFirst}}?sort=newest{{end}}" class="brand">RSS Reader</a>
   <nav class="filters" aria-label="記事の絞り込み">
-    <a href="/" data-workspace-link class="{{if and (eq .Filter "") (eq .FeedID 0) (not .Folder)}}active{{end}}">すべて</a>
+    <a href="/{{if .NewestFirst}}?sort=newest{{end}}" data-workspace-link class="{{if and (eq .Filter "") (eq .FeedID 0) (not .Folder)}}active{{end}}">すべて</a>
     {{if or .Folder .FeedID}}<a href="{{.Scope}}" data-workspace-link class="{{if not .Filter}}active{{end}}">選択範囲のすべて</a>{{end}}
     <a href="{{.Scope}}view=unread" data-workspace-link class="{{if eq .Filter "unread"}}active{{end}}">未読<span class="count">{{.Result.Unread}}</span></a>
     <a href="{{.Scope}}view=favorites" data-workspace-link class="{{if eq .Filter "favorites"}}active{{end}}">お気に入り<span class="count">{{.Result.Favorites}}</span></a>
@@ -202,17 +205,17 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <div data-folder-order-list>
     {{range .Folders}}
       {{$folder := .}}
-      <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}"><summary data-folder-drop="{{.ID}}"><a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" data-workspace-link {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}><span>{{.Name}}</span>{{with index $.FolderUnread .ID}}<span class="folder-unread-badge"><span class="visually-hidden">未読 </span>{{.}}<span class="visually-hidden"> 件</span></span>{{end}}</a></summary>
+      <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}"><summary data-folder-drop="{{.ID}}"><a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" data-workspace-link {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}><span>{{.Name}}</span>{{template "unread-badge" index $.FolderUnread .ID}}</a></summary>
       {{range $.Feeds}}{{if eq .FolderID $folder.ID}}      <div class="feed">
-          <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
+          <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
       </div>
 {{end}}{{end}}
       </details>
     {{end}}
     </div>
-    <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0"><summary data-folder-drop="0"><a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}" data-workspace-link {{if eq .Folder "0"}}aria-current="page"{{end}}><span>未分類</span>{{with index .FolderUnread 0}}<span class="folder-unread-badge"><span class="visually-hidden">未読 </span>{{.}}<span class="visually-hidden"> 件</span></span>{{end}}</a></summary>
+    <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0"><summary data-folder-drop="0"><a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}{{if .NewestFirst}}&amp;sort=newest{{end}}" data-workspace-link {{if eq .Folder "0"}}aria-current="page"{{end}}><span>未分類</span>{{template "unread-badge" index .FolderUnread 0}}</a></summary>
     {{range .Feeds}}{{if eq .FolderID 0}}      <div class="feed">
-          <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
+          <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
       </div>
 {{end}}{{end}}
     </details>
@@ -303,6 +306,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 
   <form class="search" data-workspace-search method="get" action="/" role="search">
     <input type="hidden" name="view" value="{{.Filter}}">{{if .Folder}}<input type="hidden" name="folder" value="{{.Folder}}">{{end}}<input type="hidden" name="feed" value="{{.FeedID}}">
+    {{if .NewestFirst}}<input type="hidden" name="sort" value="newest">{{end}}
     <input name="q" type="search" value="{{.Query}}" aria-label="タイトル・本文を検索" placeholder="記事を検索">
     <button>検索</button>
   </form>
@@ -311,6 +315,10 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <h1>{{if .Query}}「{{.Query}}」の検索結果{{else if .FolderName}}{{.FolderName}}{{else if eq .Filter "unread"}}未読{{else if eq .Filter "favorites"}}お気に入り{{else if ne .FeedID 0}}{{range .Feeds}}{{if eq $.FeedID .ID}}{{.Title}}{{end}}{{end}}{{else}}すべての記事{{end}}</h1>
     <span class="muted">{{.Result.Total}}件</span>
   </div>
+  <nav class="sort-options" aria-label="記事の並び順">
+    <a class="button" href="{{.OldestURL}}" data-workspace-link {{if not .NewestFirst}}aria-current="true"{{end}}>古い順</a>
+    <a class="button" href="{{.NewestURL}}" data-workspace-link {{if .NewestFirst}}aria-current="true"{{end}}>新しい順</a>
+  </nav>
   {{range .Result.Items}}
   <article class="article {{if .IsRead}}read{{end}} {{if $.Detail}}{{if eq $.Detail.ID .ID}}selected{{end}}{{end}}" data-article-id="{{.ID}}">
     <h2><a href="{{articleURL $.ListURL .ID}}" data-workspace-link {{if $.Detail}}{{if eq $.Detail.ID .ID}}aria-current="true"{{end}}{{end}}>{{.Title}}</a></h2>
@@ -387,3 +395,5 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   {{if .LastError}}<small class="error">取得エラー：{{.LastError}}</small>{{else if not .CheckedAt}}<span class="muted">未取得</span>{{end}}
 </li>
 {{end}}
+
+{{define "unread-badge"}}{{if .}}<span class="unread-badge"><span class="visually-hidden">未読 </span>{{.}}<span class="visually-hidden"> 件</span></span>{{end}}{{end}}

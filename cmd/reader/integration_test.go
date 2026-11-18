@@ -553,8 +553,11 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		page := request("GET", "/?q=no-matching-article", nil)
-		if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<span>空のフォルダー</span><span class="folder-unread-badge"><span class="visually-hidden">未読 </span>1`) {
+		if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<span>空のフォルダー</span><span class="unread-badge"><span class="visually-hidden">未読 </span>1`) {
 			t.Fatalf("folder unread count missing from filtered page: %d", page.Code)
+		}
+		if !strings.Contains(page.Body.String(), fmt.Sprintf(`<span>%s</span><span class="unread-badge"><span class="visually-hidden">未読 </span>1`, saved.Title)) {
+			t.Fatal("feed unread count missing from filtered page")
 		}
 		if err := fs.SaveFolder(ctx, emptyID, "改名済み"); err != nil {
 			t.Fatal(err)
@@ -625,4 +628,31 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("failed transaction had partial effects: %v %v", current, err)
 		}
 	})
+	t.Run("article sort order", func(t *testing.T) {
+		for i := 1; i <= 21; i++ {
+			title := fmt.Sprintf("sort-fixture-%02d", i)
+			if err := as.Save(ctx, articles.Article{
+				Title: title, URL: "https://example.org/" + title,
+				PublishedAt: time.Date(2025, 1, i, 0, 0, 0, 0, time.UTC),
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, tc := range []struct {
+			query         string
+			first, second string
+		}{
+			{"", "01", "02"},
+			{"&sort=newest", "21", "20"},
+		} {
+			w := request("GET", "/?q=sort-fixture"+tc.query, nil)
+			first := strings.Index(w.Body.String(), ">sort-fixture-"+tc.first+"</a>")
+			second := strings.Index(w.Body.String(), ">sort-fixture-"+tc.second+"</a>")
+			if w.Code != http.StatusOK || first < 0 || second <= first ||
+				!strings.Contains(w.Body.String(), "page=2&amp;q=sort-fixture"+strings.ReplaceAll(tc.query, "&", "&amp;")) {
+				t.Fatalf("unexpected sort order or pagination for %q (status %d)", tc.query, w.Code)
+			}
+		}
+	})
+
 }

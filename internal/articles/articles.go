@@ -23,10 +23,11 @@ type Article struct {
 
 // Query selects articles by text, state, feed and page.
 type Query struct {
-	Text, View string
-	FeedID     int64
-	FeedIDs    []int64
-	Page       int
+	Text, View  string
+	FeedID      int64
+	FeedIDs     []int64
+	Page        int
+	NewestFirst bool
 }
 
 // Result contains a page of articles and aggregate counts.
@@ -155,7 +156,11 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	if r.Page > r.Pages {
 		r.Page = r.Pages
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries`+where+` ORDER BY published_at DESC,id DESC LIMIT 20 OFFSET $5`, pattern, q.FeedID, q.View, q.FeedIDs, (r.Page-1)*20)
+	order := "published_at ASC, id ASC"
+	if q.NewestFirst {
+		order = "published_at DESC, id DESC"
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries`+where+` ORDER BY `+order+` LIMIT 20 OFFSET $5`, pattern, q.FeedID, q.View, q.FeedIDs, (r.Page-1)*20)
 	if err != nil {
 		return r, err
 	}

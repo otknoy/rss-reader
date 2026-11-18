@@ -49,10 +49,12 @@ type application struct {
 }
 type view struct {
 	ClosedFolders                                             map[int64]bool
-	FolderUnread                                              map[int64]int
+	FolderUnread, FeedUnread                                  map[int64]int
 	Folders                                                   []feeds.Folder
 	Folder, FolderName                                        string
 	Scope                                                     string
+	NewestFirst                                               bool
+	OldestURL, NewestURL                                      string
 	Feeds                                                     []feeds.Feed
 	Result                                                    articles.Result
 	Query, Filter, Message, ReturnTo, ListURL, Previous, Next string
@@ -188,6 +190,12 @@ func (a *application) base(r *http.Request) (view, error) {
 	folderName := ""
 	var ids []int64
 	scope := "/?"
+	newestFirst := q.Get("sort") == "newest"
+	if newestFirst {
+		scope += "sort=newest&"
+	} else {
+		q.Del("sort")
+	}
 	if folder != "" {
 		ids = []int64{}
 		for _, f := range folders {
@@ -211,7 +219,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	} else if feedID > 0 {
 		scope += "feed=" + strconv.FormatInt(feedID, 10) + "&"
 	}
-	result, err := a.search.Find(r.Context(), articles.Query{Text: q.Get("q"), View: filter, FeedID: feedID, FeedIDs: ids, Page: p})
+	result, err := a.search.Find(r.Context(), articles.Query{Text: q.Get("q"), View: filter, FeedID: feedID, FeedIDs: ids, Page: p, NewestFirst: newestFirst})
 	if err != nil {
 		return view{}, err
 	}
@@ -241,6 +249,14 @@ func (a *application) base(r *http.Request) (view, error) {
 		q.Set("page", strconv.Itoa(result.Page+1))
 		next = "/?" + q.Encode()
 	}
+	q.Del("page")
+	q.Del("sort")
+	oldestURL := "/"
+	if len(q) > 0 {
+		oldestURL += "?" + q.Encode()
+	}
+	q.Set("sort", "newest")
+	newestURL := "/?" + q.Encode()
 	message := ""
 	switch r.URL.Query().Get("message") {
 	case "feed-queued":
@@ -258,7 +274,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
-	return view{ClosedFolders: closed, FolderUnread: folderUnread, Folders: folders, Folder: folder, FolderName: folderName, Scope: scope, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
+	return view{ClosedFolders: closed, FolderUnread: folderUnread, FeedUnread: unreadByFeed, Folders: folders, Folder: folder, FolderName: folderName, Scope: scope, NewestFirst: newestFirst, OldestURL: oldestURL, NewestURL: newestURL, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
 }
 
 func (a *application) index(w http.ResponseWriter, r *http.Request) {
