@@ -76,6 +76,7 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /folders/{operation}", a.changeFolder)
 	mux.HandleFunc("POST /folders/{operation}/{id}", a.changeFolder)
 	mux.HandleFunc("POST /folders/open/{id}", a.setFolderOpen)
+	mux.HandleFunc("POST /folders/order", a.setFolderOrder)
 	mux.HandleFunc("POST /feeds/import", a.importOPML)
 	mux.HandleFunc("GET /feeds/export.opml", a.exportOPML)
 	mux.HandleFunc("POST /feeds/{id}/remove", a.removeFeed)

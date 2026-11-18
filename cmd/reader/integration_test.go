@@ -559,6 +559,18 @@ func TestPrototypeIntegration(t *testing.T) {
 		if !strings.Contains(page.Body.String(), fmt.Sprintf(`<span>%s</span><span class="unread-badge"><span class="visually-hidden">未読 </span>1`, saved.Title)) {
 			t.Fatal("feed unread count missing from filtered page")
 		}
+		first, second := fmt.Sprint(emptyID), fmt.Sprint(find(after, newURL).FolderID)
+		for _, order := range [][]string{{first, second}, {second, first}} {
+			if w := request("POST", "/folders/order", url.Values{"folder": order}); w.Code != http.StatusSeeOther {
+				t.Fatalf("save folder order: %d %s", w.Code, w.Body.String())
+			}
+			page := request("GET", "/", nil).Body.String()
+			firstIndex := strings.Index(page, `data-sidebar-folder="`+order[0]+`"`)
+			secondIndex := strings.Index(page, `data-sidebar-folder="`+order[1]+`"`)
+			if firstIndex < 0 || secondIndex <= firstIndex {
+				t.Fatal("new page did not use the saved folder order")
+			}
+		}
 		if err := fs.SaveFolder(ctx, emptyID, "改名済み"); err != nil {
 			t.Fatal(err)
 		}

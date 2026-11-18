@@ -16,9 +16,9 @@ type Folder struct {
 // ErrFolderName indicates an empty folder name.
 var ErrFolderName = errors.New("フォルダー名を入力してください")
 
-// Folders lists folders by name.
+// Folders lists folders in display order, followed by unpositioned folders by name.
 func (s *Store) Folders(ctx context.Context) (folders []Folder, err error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,name FROM feeds.folders ORDER BY name,id")
+	rows, err := s.db.QueryContext(ctx, "SELECT id,name FROM feeds.folders ORDER BY sort_position NULLS LAST,name,id")
 	if err != nil {
 		return nil, err
 	}
@@ -31,6 +31,22 @@ func (s *Store) Folders(ctx context.Context) (folders []Folder, err error) {
 		folders = append(folders, folder)
 	}
 	return folders, rows.Err()
+}
+
+// SetFolderOrder saves a sidebar order.
+func (s *Store) SetFolderOrder(ctx context.Context, ids []int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "LOCK TABLE feeds.folders IN SHARE ROW EXCLUSIVE MODE"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE feeds.folders SET sort_position = array_position($1::bigint[], id)`, ids); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SaveFolder creates a folder or renames an existing one.

@@ -74,3 +74,31 @@ func (a *application) setFolderOpen(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (a *application) setFolderOrder(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "並び順の指定が不正です", http.StatusBadRequest)
+		return
+	}
+	values := r.PostForm["folder"]
+	ids := make([]int64, 0, len(values))
+	seen := make(map[int64]bool)
+	for _, value := range values {
+		id, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || id <= 0 || seen[id] {
+			http.Error(w, "並び順の指定が不正です", http.StatusBadRequest)
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		http.Error(w, "並び順の指定が不正です", http.StatusBadRequest)
+		return
+	}
+	if err := a.feeds.SetFolderOrder(r.Context(), ids); err != nil {
+		fail(w, err)
+		return
+	}
+	redirect(w, r, "")
+}
