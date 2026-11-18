@@ -532,6 +532,20 @@ func TestPrototypeIntegration(t *testing.T) {
 		if w := request("GET", fmt.Sprintf("/?folder=%d", emptyID), nil); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "data-article-id=") {
 			t.Fatalf("empty folder response: %d", w.Code)
 		}
+		for _, folderID := range []int64{0, emptyID} {
+			path := fmt.Sprintf("/folders/open/%d", folderID)
+			for _, open := range []bool{false, false, true} {
+				if w := request("POST", path, url.Values{"open": {fmt.Sprint(open)}}); w.Code != http.StatusNoContent {
+					t.Fatalf("save folder state: %d %s", w.Code, w.Body.String())
+				}
+				page := request("GET", "/", nil)
+				marker := fmt.Sprintf(`<details open data-sidebar-folder="%d"`, folderID)
+				if page.Code != http.StatusOK || strings.Contains(page.Body.String(), marker) != open {
+					t.Fatalf("server-rendered folder %d open=%v", folderID, open)
+				}
+			}
+		}
+
 		if err := fs.Move(ctx, existing.ID, emptyID); err != nil {
 			t.Fatal(err)
 		}

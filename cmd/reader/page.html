@@ -98,6 +98,10 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 }
 .folder-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; align-items: start; }
 .folder-card { min-width: 0; min-height: 116px; padding: 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.folder-card-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.folder-order-buttons { display: flex; gap: 4px; }
+.folder-order-buttons button { padding: 2px 7px; }
+.folder-order-buttons button:disabled { opacity: .4; cursor: default; }
 .folder-card h3 { font-size: 14px; }
 .folder-card ul { list-style: none; padding: 0; margin: 10px 0 0; }
 .managed-feed-row { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
@@ -177,7 +181,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   .reader h1 { font-size: 22px; }
 }
 </style>
-<script src="/assets/reader.js" defer></script>
+<script src="/assets/reader.js" defer blocking="render"></script>
 </head>
 <body>
 <div class="shell {{if .Detail}}has-detail{{end}}">
@@ -192,16 +196,18 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   <section class="feeds" aria-label="購読フィード">
     <h2>購読フィード <span class="count">{{len .Feeds}}</span></h2>
     <div class="feed-list">
+    <div data-folder-order-list>
     {{range .Folders}}
       {{$folder := .}}
-      <details open><summary data-folder-drop="{{.ID}}"><a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" data-workspace-link {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}>{{.Name}}</a></summary>
+      <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}"><summary data-folder-drop="{{.ID}}"><a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" data-workspace-link {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}>{{.Name}}</a></summary>
       {{range $.Feeds}}{{if eq .FolderID $folder.ID}}      <div class="feed">
           <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
       </div>
 {{end}}{{end}}
       </details>
     {{end}}
-    <details open><summary data-folder-drop="0"><a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}" data-workspace-link {{if eq .Folder "0"}}aria-current="page"{{end}}>未分類</a></summary>
+    </div>
+    <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0"><summary data-folder-drop="0"><a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}" data-workspace-link {{if eq .Folder "0"}}aria-current="page"{{end}}>未分類</a></summary>
     {{range .Feeds}}{{if eq .FolderID 0}}      <div class="feed">
           <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}>{{.Title}}</a>
       </div>
@@ -235,11 +241,17 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
         <section class="folder-pane" aria-labelledby="folders-heading">
           <h3 id="folders-heading">フォルダー</h3>
           <div class="folder-pane-scroll" data-manager-pane="folders" tabindex="0" aria-labelledby="folders-heading">
-          <div class="folder-board">
+          <div class="folder-board" data-folder-order-list>
         {{range .Folders}}
         {{$folder := .}}
-        <section class="folder-card" data-folder-drop="{{.ID}}">
-          <h3>{{.Name}}</h3>
+        <section class="folder-card" data-folder-drop="{{.ID}}" data-sortable-folder="{{.ID}}">
+          <div class="folder-card-header">
+            <h3>{{.Name}}</h3>
+            <div class="folder-order-buttons">
+              <button type="button" data-folder-step="-1" aria-label="「{{.Name}}」を前に移動">←</button>
+              <button type="button" data-folder-step="1" aria-label="「{{.Name}}」を後ろに移動">→</button>
+            </div>
+          </div>
           <ul>{{range $.Feeds}}{{if eq .FolderID $folder.ID}}{{template "managed-feed" .}}{{end}}{{end}}</ul>
           <details class="folder-edit">
             <summary>フォルダー設定</summary>

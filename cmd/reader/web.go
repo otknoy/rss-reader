@@ -48,6 +48,7 @@ type application struct {
 	fetcher  *ingestion.Service
 }
 type view struct {
+	ClosedFolders                                             map[int64]bool
 	Folders                                                   []feeds.Folder
 	Folder, FolderName                                        string
 	Scope                                                     string
@@ -71,6 +72,7 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /feeds", a.addFeed)
 	mux.HandleFunc("POST /folders/{operation}", a.changeFolder)
 	mux.HandleFunc("POST /folders/{operation}/{id}", a.changeFolder)
+	mux.HandleFunc("POST /folders/open/{id}", a.setFolderOpen)
 	mux.HandleFunc("POST /feeds/import", a.importOPML)
 	mux.HandleFunc("GET /feeds/export.opml", a.exportOPML)
 	mux.HandleFunc("POST /feeds/{id}/remove", a.removeFeed)
@@ -177,6 +179,10 @@ func (a *application) base(r *http.Request) (view, error) {
 	if err != nil {
 		return view{}, err
 	}
+	closed, err := a.feeds.ClosedFolders(r.Context())
+	if err != nil {
+		return view{}, err
+	}
 	folder := q.Get("folder")
 	folderName := ""
 	var ids []int64
@@ -243,7 +249,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
-	return view{Folders: folders, Folder: folder, FolderName: folderName, Scope: scope, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
+	return view{ClosedFolders: closed, Folders: folders, Folder: folder, FolderName: folderName, Scope: scope, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
 }
 
 func (a *application) index(w http.ResponseWriter, r *http.Request) {

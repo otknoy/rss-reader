@@ -12,6 +12,43 @@
   const retainedReadRows = new Map();
   let favoritePending = false;
 
+  const folderPreferencesKey = "rss-reader:folders";
+  let folderOrder = [];
+  const pendingFolderStates = new Map();
+  const pendingFolderKey = "rss-reader:pending-folder-states";
+  try {
+    const saved = JSON.parse(localStorage.getItem(folderPreferencesKey));
+    if (Array.isArray(saved?.order)) folderOrder = saved.order;
+  } catch {
+    // Preferences remain usable in this tab when browser storage is unavailable.
+  }
+
+  function saveFolderPreferences() {
+    try {
+      localStorage.setItem(folderPreferencesKey, JSON.stringify({
+        order: folderOrder,
+      }));
+    } catch {
+      // Keep the current tab's preferences in memory.
+    }
+  }
+
+  function applyFolderOrder(sidebar) {
+    const rank = new Map(folderOrder.map((id, index) => [id, index]));
+    for (const list of sidebar.querySelectorAll("[data-folder-order-list]")) {
+      const folders = [...list.children].filter(folder => folder.hasAttribute("data-sortable-folder"));
+      folders.sort((a, b) =>
+        (rank.get(a.dataset.sortableFolder) ?? folderOrder.length) -
+        (rank.get(b.dataset.sortableFolder) ?? folderOrder.length));
+      folders.forEach((folder, index) => {
+        if (list.children[index] !== folder) list.insertBefore(folder, list.children[index]);
+        for (const button of folder.querySelectorAll("[data-folder-step]")) {
+          button.disabled = button.dataset.folderStep === "-1" ? index === 0 : index === folders.length - 1;
+        }
+      });
+    }
+  }
+
   function contextKey(raw) {
     const url = new URL(raw, location.href);
     for (const key of ["article", "message", "added", "existing", "skipped"]) url.searchParams.delete(key);
@@ -44,6 +81,8 @@
     document.querySelector("#reader-pane")?.setAttribute("aria-busy", "true");
 
     try {
+      await Promise.all([...pendingFolderStates.values()].map(state => state.done));
+      if (controller.signal.aborted) return;
       const response = await fetch(url, {
         method: options.method || "GET",
         body: options.body,
@@ -81,6 +120,7 @@
         nextList.scrollTop = sameContext ? listScroll : 0;
         const sidebar = document.querySelector(".sidebar");
         const sidebarScroll = sidebar.scrollTop;
+        restoreFolders(nextSidebar);
         const manager = sidebar.querySelector(".subscription-manager[open]");
         const managerScroll = manager?.scrollTop;
         const paneScroll = new Map(Array.from(manager?.querySelectorAll("[data-manager-pane]") || [],
@@ -332,6 +372,59 @@
     }
   });
 
+  function restoreFolders(sidebar) {
+    applyFolderOrder(sidebar);
+    for (const folder of sidebar.querySelectorAll("[data-sidebar-folder]")) {
+      const pendingState = pendingFolderStates.get(folder.dataset.sidebarFolder);
+      if (pendingState) folder.open = pendingState.open;
+    }
+  }
+
+  function rememberPendingFolderStates() {
+    try {
+      if (!pendingFolderStates.size) sessionStorage.removeItem(pendingFolderKey);
+      else sessionStorage.setItem(pendingFolderKey, JSON.stringify(
+        [...pendingFolderStates].map(([id, state]) => [id, state.open])));
+    } catch {
+      // DB writes still work when session storage is unavailable.
+    }
+  }
+
+  async function saveFolderState(id, state) {
+    try {
+      const response = await fetch(`/folders/open/${id}`, {
+        method: "POST",
+        body: new URLSearchParams({ open: String(state.open) }),
+        keepalive: true,
+      });
+      if (!response.ok) throw new Error("保存に失敗しました");
+    } catch {
+      showError("フォルダーの開閉状態を保存できませんでした。");
+    } finally {
+      if (pendingFolderStates.get(id) === state) {
+        pendingFolderStates.delete(id);
+        rememberPendingFolderStates();
+      }
+    }
+  }
+
+  // Persist only user toggles, not native toggle events from rendering HTML.
+  document.addEventListener("click", event => {
+    const summary = event.target.closest("details[data-sidebar-folder] > summary");
+    if (!summary || event.target.closest("a") || event.defaultPrevented) return;
+    event.preventDefault();
+    const folder = summary.parentElement;
+    const id = folder.dataset.sidebarFolder;
+    folder.open = !folder.open;
+    const previous = pendingFolderStates.get(id);
+    const state = { open: folder.open };
+    pendingFolderStates.set(id, state);
+    rememberPendingFolderStates();
+    state.done = previous
+      ? previous.done.then(() => saveFolderState(id, state))
+      : saveFolderState(id, state);
+  });
+
   document.addEventListener("close", event => {
     if (event.target.matches?.(".subscription-manager") && event.target.isConnected) {
       event.target.closest(".sidebar").querySelector("[data-manage-feeds]")?.focus();
@@ -339,6 +432,21 @@
   }, true);
 
   document.addEventListener("click", (event) => {
+    const orderButton = event.target.closest("[data-folder-step]");
+    if (orderButton) {
+      const folder = orderButton.closest("[data-sortable-folder]");
+      const folders = [...folder.parentElement.querySelectorAll(":scope > [data-sortable-folder]")];
+      const from = folders.indexOf(folder);
+      const to = from + Number(orderButton.dataset.folderStep);
+      if (!folders[to]) return;
+      [folders[from], folders[to]] = [folders[to], folders[from]];
+      folderOrder = folders.map(item => item.dataset.sortableFolder);
+      const sidebar = folder.closest(".sidebar");
+      applyFolderOrder(sidebar);
+      saveFolderPreferences();
+      (orderButton.disabled ? folder.querySelector("[data-folder-step]:not(:disabled)") : orderButton)?.focus();
+      return;
+    }
     const managerButton = event.target.closest("[data-manage-feeds], [data-close-manager]");
     if (managerButton) {
       const manager = managerButton.closest(".sidebar").querySelector(".subscription-manager");
@@ -435,5 +543,19 @@
 
   addEventListener("popstate", () => void navigate(location.href, { history: "none" }));
   setCursor(articleRows().find(row => row.dataset.articleId === keyboardCursorID));
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(pendingFolderKey));
+    if (Array.isArray(saved)) {
+      for (const [id, open] of saved) {
+        if (typeof id !== "string" || !/^\d+$/.test(id) || typeof open !== "boolean") continue;
+        const state = { open };
+        pendingFolderStates.set(id, state);
+        state.done = saveFolderState(id, state);
+      }
+    }
+  } catch {
+    // Use the database state when there are no recoverable local writes.
+  }
+  restoreFolders(document.querySelector(".sidebar"));
   scheduleContentCheck();
 })();

@@ -66,3 +66,31 @@ func folderMutation(result sql.Result, err error) error {
 	}
 	return err
 }
+
+// ClosedFolders lists closed folders, with zero representing the unfiled list.
+func (s *Store) ClosedFolders(ctx context.Context) (closed map[int64]bool, err error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT COALESCE(folder_id, 0) FROM feeds.closed_folders")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, rows.Close()) }()
+	closed = make(map[int64]bool)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		closed[id] = true
+	}
+	return closed, rows.Err()
+}
+
+// SetFolderOpen persists the sidebar state of a folder.
+func (s *Store) SetFolderOpen(ctx context.Context, id int64, open bool) error {
+	if open {
+		_, err := s.db.ExecContext(ctx, "DELETE FROM feeds.closed_folders WHERE folder_id IS NOT DISTINCT FROM NULLIF($1::bigint, 0)", id)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, "INSERT INTO feeds.closed_folders(folder_id) VALUES(NULLIF($1::bigint, 0)) ON CONFLICT DO NOTHING", id)
+	return err
+}
