@@ -73,7 +73,7 @@ func TestContentLeaseReleasedWhenSaveFails(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader("<html><body><article><p>" + text + "</p></article></body></html>")), Request: req}, nil
 	})}
 	store := &queueStub{saveErr: errors.New("save failed")}
-	if _, err := service.fetchAndSaveContent(context.Background(), store, articles.Article{ID: 4, URL: "https://example.com/article"}); err == nil {
+	if _, err := service.FetchQueuedContent(context.Background(), store, articles.Article{ID: 4, URL: "https://example.com/article"}); err == nil {
 		t.Fatal("expected save failure")
 	}
 	if len(store.failed) != 1 || store.failed[0] != 4 {

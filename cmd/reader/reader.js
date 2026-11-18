@@ -3,6 +3,7 @@
 
   let pending;
   let contentPollTimer;
+  let contentRequestedFor = "";
   let navigationGeneration = 0;
   let currentContext = contextKey(location.href);
   let mobileListScroll = 0;
@@ -145,13 +146,19 @@
   function scheduleContentCheck() {
     clearTimeout(contentPollTimer);
     const reader = document.querySelector('.reader[data-content-pending="true"]');
-    if (!reader) return;
+    if (!reader) {
+      contentRequestedFor = "";
+      return;
+    }
     const id = reader.dataset.readingId;
+    const requestNow = contentRequestedFor !== id;
+    contentRequestedFor = id;
     const hadError = reader.dataset.contentError === "true";
     const generation = navigationGeneration;
     contentPollTimer = setTimeout(async () => {
       try {
         const response = await fetch(`/articles/${id}/content-status`, {
+          method: requestNow ? "POST" : "GET",
           credentials: "same-origin",
           headers: { Accept: "application/json" },
         });
@@ -167,7 +174,7 @@
       } catch {
         if (generation === navigationGeneration && selectedID() === id) scheduleContentCheck();
       }
-    }, hadError ? 30000 : 5000);
+    }, requestNow ? 0 : hadError ? 30000 : 5000);
   }
 
   function articleRows() {

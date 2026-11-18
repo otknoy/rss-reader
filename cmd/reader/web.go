@@ -71,6 +71,7 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /articles", a.addArticle)
 	mux.HandleFunc("POST /articles/{id}/state", a.state)
 	mux.HandleFunc("GET /articles/{id}/content-status", a.contentStatus)
+	mux.HandleFunc("POST /articles/{id}/content-status", a.contentStatus)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
@@ -340,6 +341,18 @@ func (a *application) contentStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	if r.Method == http.MethodPost {
+		item, err := a.articles.Get(r.Context(), n)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		if item.FullContentPending {
+			if _, err := a.fetcher.FetchQueuedContent(r.Context(), a.articles, item); err != nil {
+				log.Printf("fetch opened article %d: %v", n, err)
+			}
+		}
 	}
 	status, err := a.articles.FullContentStatus(r.Context(), n)
 	if err != nil {

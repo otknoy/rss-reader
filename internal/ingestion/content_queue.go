@@ -27,15 +27,15 @@ func (s *Service) RefreshFullContent(ctx context.Context, store contentStore) er
 		if err := ctx.Err(); err != nil {
 			return errors.Join(append(failures, err)...)
 		}
-		if _, err := s.fetchAndSaveContent(ctx, store, item); err != nil {
+		if _, err := s.FetchQueuedContent(ctx, store, item); err != nil {
 			failures = append(failures, fmt.Errorf("article %d: %w", item.ID, err))
 		}
 	}
 	return errors.Join(failures...)
 }
 
-// fetchAndSaveContent claims a queued article and persists its result.
-func (s *Service) fetchAndSaveContent(ctx context.Context, store contentStore, item articles.Article) (bool, error) {
+// FetchQueuedContent fetches an article when its scheduled attempt is due.
+func (s *Service) FetchQueuedContent(ctx context.Context, store contentStore, item articles.Article) (bool, error) {
 	claimed, err := store.ClaimFullContent(ctx, item.ID)
 	if err != nil || !claimed {
 		return false, err

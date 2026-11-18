@@ -282,7 +282,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     </div>
     {{if .FullContentPending}}<p class="muted" role="status">{{if .FullFetchError}}本文の自動取得に失敗しました。後で再試行します。{{else}}本文は自動取得され次第、ここに表示されます。{{end}}</p>{{end}}
     <p class="muted content-source">{{if .FullFetchedAt}}元ページから取得した本文{{else if .SourceID}}RSSに含まれる本文・要約{{else}}登録した本文・メモ{{end}}</p>
-    {{$body := richArticle .}}{{if $body}}<div class="body">{{$body}}</div>{{else}}<div class="body plain">{{if .FullBodyText}}{{.FullBodyText}}{{else if .BodyText}}{{.BodyText}}{{else}}本文の自動取得をお待ちいただくか、元記事からお読みください。{{end}}</div>{{end}}
+    {{$body := richArticle .}}{{if $body}}<div class="body">{{$body}}</div>{{else}}<div class="body plain">{{if .FullBodyText}}{{.FullBodyText}}{{else if .BodyText}}{{.BodyText}}{{else}}{{if .FullFetchError}}本文を表示できませんでした。上の「元記事」からお読みください。{{else}}本文を取得しています。上の「元記事」からも読めます。{{end}}{{end}}</div>{{end}}
   {{end}}
   </article>
 
