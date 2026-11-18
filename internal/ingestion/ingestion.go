@@ -96,12 +96,17 @@ func publicIP(ip netip.Addr) bool {
 }
 
 // Refresh is an explicit manual refresh; it bypasses the due time but uses conditional HTTP.
-func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, false) }
+func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, false, 0) }
 
 // RefreshDue performs one scheduled pass, shared by web polling and future CronJobs.
-func (s *Service) RefreshDue(ctx context.Context) error { return s.refresh(ctx, true) }
+func (s *Service) RefreshDue(ctx context.Context) error { return s.refresh(ctx, true, 0) }
 
-func (s *Service) refresh(ctx context.Context, dueOnly bool) error {
+// RefreshFeed attempts the initial fetch of a single due subscription.
+func (s *Service) RefreshFeed(ctx context.Context, id int64) error {
+	return s.refresh(ctx, true, id)
+}
+
+func (s *Service) refresh(ctx context.Context, dueOnly bool, onlyID int64) error {
 	return s.feeds.WithRefreshLock(ctx, func() error {
 		var list []feeds.Feed
 		var err error
@@ -115,6 +120,9 @@ func (s *Service) refresh(ctx context.Context, dueOnly bool) error {
 		}
 		var failures []error
 		for _, f := range list {
+			if onlyID != 0 && f.ID != onlyID {
+				continue
+			}
 			if err := ctx.Err(); err != nil {
 				return errors.Join(append(failures, err)...)
 			}

@@ -513,6 +513,42 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err != nil || len(current) != len(after) {
 			t.Fatalf("malformed import had partial effects: %v %v", current, err)
 		}
+		if err := fs.SaveFolder(ctx, 0, "空のフォルダー"); err != nil {
+			t.Fatal(err)
+		}
+		folders, err := fs.Folders(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var emptyID int64
+		for _, folder := range folders {
+			if folder.Name == "空のフォルダー" {
+				emptyID = folder.ID
+			}
+		}
+		if emptyID == 0 {
+			t.Fatal("folder not created")
+		}
+		if w := request("GET", fmt.Sprintf("/?folder=%d", emptyID), nil); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "data-article-id=") {
+			t.Fatalf("empty folder response: %d", w.Code)
+		}
+		if err := fs.Move(ctx, existing.ID, emptyID); err != nil {
+			t.Fatal(err)
+		}
+		if err := fs.SaveFolder(ctx, emptyID, "改名済み"); err != nil {
+			t.Fatal(err)
+		}
+		if err := fs.DeleteFolder(ctx, emptyID); err != nil {
+			t.Fatal(err)
+		}
+		after, err = fs.List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if find(after, existingURL).FolderID != 0 || find(after, newURL).FolderID == 0 {
+			t.Fatal("folder removal or OPML classification failed")
+		}
+
 		var output, again bytes.Buffer
 		if err := fs.ExportOPML(ctx, &output); err != nil {
 			t.Fatal(err)
@@ -521,14 +557,24 @@ func TestPrototypeIntegration(t *testing.T) {
 			Version string `xml:"version,attr"`
 			Body    struct {
 				Outlines []struct {
-					URL string `xml:"xmlUrl,attr"`
+					URL      string `xml:"xmlUrl,attr"`
+					Children []struct {
+						URL string `xml:"xmlUrl,attr"`
+					} `xml:"outline"`
 				} `xml:"outline"`
 			} `xml:"body"`
 		}
 		if err := xml.Unmarshal(output.Bytes(), &document); err != nil {
 			t.Fatal(err)
 		}
-		if document.Version != "2.0" || len(document.Body.Outlines) != len(after) || !strings.Contains(output.String(), "日本語 &amp; 新着") {
+		feedCount := 0
+		for _, outline := range document.Body.Outlines {
+			if outline.URL != "" {
+				feedCount++
+			}
+			feedCount += len(outline.Children)
+		}
+		if document.Version != "2.0" || feedCount != len(after) || !strings.Contains(output.String(), "日本語 &amp; 新着") {
 			t.Fatalf("invalid export: %s", output.String())
 		}
 		result, err := fs.ImportOPML(ctx, bytes.NewReader(output.Bytes()))

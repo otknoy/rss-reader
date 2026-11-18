@@ -25,6 +25,7 @@ type Article struct {
 type Query struct {
 	Text, View string
 	FeedID     int64
+	FeedIDs    []int64
 	Page       int
 }
 
@@ -120,8 +121,8 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	}
 	// Escape LIKE metacharacters so user queries are literal substring searches.
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(q.Text)) + "%"
-	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR full_body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='favorites' AND favorite))`
-	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM articles.entries`+where, pattern, q.FeedID, q.View).Scan(&r.Total); err != nil {
+	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR full_body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($4::bigint[] IS NULL OR source_id=ANY($4::bigint[])) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='favorites' AND favorite))`
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM articles.entries`+where, pattern, q.FeedID, q.View, q.FeedIDs).Scan(&r.Total); err != nil {
 		return r, err
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FILTER(WHERE NOT is_read),count(*) FILTER(WHERE favorite) FROM articles.entries WHERE deleted_at IS NULL`).Scan(&r.Unread, &r.Favorites); err != nil {
@@ -134,7 +135,7 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	if r.Page > r.Pages {
 		r.Page = r.Pages
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries`+where+` ORDER BY published_at DESC,id DESC LIMIT 20 OFFSET $4`, pattern, q.FeedID, q.View, (r.Page-1)*20)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries`+where+` ORDER BY published_at DESC,id DESC LIMIT 20 OFFSET $5`, pattern, q.FeedID, q.View, q.FeedIDs, (r.Page-1)*20)
 	if err != nil {
 		return r, err
 	}

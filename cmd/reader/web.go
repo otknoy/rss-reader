@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 //go:embed page.html
@@ -46,6 +48,9 @@ type application struct {
 	fetcher  *ingestion.Service
 }
 type view struct {
+	Folders                                                   []feeds.Folder
+	Folder, FolderName                                        string
+	Scope                                                     string
 	Feeds                                                     []feeds.Feed
 	Result                                                    articles.Result
 	Query, Filter, Message, ReturnTo, ListURL, Previous, Next string
@@ -64,6 +69,8 @@ func (a *application) routes() http.Handler {
 	})
 	mux.HandleFunc("GET /articles/{id}", a.detail)
 	mux.HandleFunc("POST /feeds", a.addFeed)
+	mux.HandleFunc("POST /folders/{operation}", a.changeFolder)
+	mux.HandleFunc("POST /folders/{operation}/{id}", a.changeFolder)
 	mux.HandleFunc("POST /feeds/import", a.importOPML)
 	mux.HandleFunc("GET /feeds/export.opml", a.exportOPML)
 	mux.HandleFunc("POST /feeds/{id}/remove", a.removeFeed)
@@ -166,7 +173,38 @@ func (a *application) base(r *http.Request) (view, error) {
 	if filter != "unread" && filter != "favorites" {
 		filter = ""
 	}
-	result, err := a.search.Find(r.Context(), articles.Query{Text: q.Get("q"), View: filter, FeedID: feedID, Page: p})
+	folders, err := a.feeds.Folders(r.Context())
+	if err != nil {
+		return view{}, err
+	}
+	folder := q.Get("folder")
+	folderName := ""
+	var ids []int64
+	scope := "/?"
+	if folder != "" {
+		ids = []int64{}
+		for _, f := range folders {
+			if strconv.FormatInt(f.ID, 10) == folder {
+				folderName = f.Name
+				break
+			}
+		}
+		if folder == "0" {
+			folderName = "未分類"
+		}
+		if folderName == "" {
+			return view{}, sql.ErrNoRows
+		}
+		for _, f := range list {
+			if strconv.FormatInt(f.FolderID, 10) == folder {
+				ids = append(ids, f.ID)
+			}
+		}
+		scope += "folder=" + folder + "&"
+	} else if feedID > 0 {
+		scope += "feed=" + strconv.FormatInt(feedID, 10) + "&"
+	}
+	result, err := a.search.Find(r.Context(), articles.Query{Text: q.Get("q"), View: filter, FeedID: feedID, FeedIDs: ids, Page: p})
 	if err != nil {
 		return view{}, err
 	}
@@ -190,18 +228,22 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 	message := ""
 	switch r.URL.Query().Get("message") {
+	case "feed-queued":
+		message = "フィードを登録しました。次回の自動更新で記事を取得します。"
+	case "feed-initial-error":
+		message = "フィードを登録しましたが、初回取得に失敗しました。購読管理の取得状況をご確認ください。"
 	case "saved":
 		message = "保存しました"
 	case "updated":
 		message = "記事を更新しました"
 	case "fetch-error":
-		message = "取得できなかったフィードがあります。「購読フィード」の取得状況をご確認ください。"
+		message = "取得できなかったフィードがあります。「購読を管理」の取得状況をご確認ください。"
 	case "opml-imported":
 		message = fmt.Sprintf("OPML: %d件登録・%d件重複・%d件スキップ", opmlCount(r.URL.Query().Get("added")), opmlCount(r.URL.Query().Get("existing")), opmlCount(r.URL.Query().Get("skipped")))
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
-	return view{Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
+	return view{Folders: folders, Folder: folder, FolderName: folderName, Scope: scope, Feeds: list, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
 }
 
 func (a *application) index(w http.ResponseWriter, r *http.Request) {
@@ -254,11 +296,35 @@ func (a *application) addFeed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	if err := a.feeds.Add(r.Context(), raw); err != nil {
+	var folder *int64
+	if rawFolder := r.FormValue("folder"); rawFolder != "" {
+		n, err := strconv.ParseInt(rawFolder, 10, 64)
+		if err != nil || n < 0 {
+			http.Error(w, "フォルダーの指定が不正です", http.StatusBadRequest)
+			return
+		}
+		folder = &n
+	}
+	feedID, err := a.feeds.AddToFolder(r.Context(), raw, folder)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			http.Error(w, "フォルダーがありません", http.StatusBadRequest)
+			return
+		}
 		fail(w, err)
 		return
 	}
-	redirect(w, r, "saved")
+	message := "saved"
+	if err := a.fetcher.RefreshFeed(r.Context(), feedID); err != nil {
+		if errors.Is(err, feeds.ErrRefreshInProgress) {
+			message = "feed-queued"
+		} else {
+			log.Printf("initial feed refresh %d: %v", feedID, err)
+			message = "feed-initial-error"
+		}
+	}
+	redirect(w, r, message)
 }
 
 func (a *application) removeFeed(w http.ResponseWriter, r *http.Request) {

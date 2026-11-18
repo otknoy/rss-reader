@@ -13,6 +13,7 @@ import (
 
 // Feed describes a subscription and its persisted fetch metadata.
 type Feed struct {
+	FolderID                   int64
 	ID                         int64
 	URL, Title, LastError      string
 	CheckedAt                  *time.Time
@@ -38,12 +39,24 @@ func ValidateURL(raw string) error {
 
 // Add subscribes to a URL or reactivates an existing subscription.
 func (s *Store) Add(ctx context.Context, raw string) error {
+	_, err := s.AddToFolder(ctx, raw, nil)
+	return err
+}
+
+// AddToFolder registers a feed and optionally assigns it to a folder.
+func (s *Store) AddToFolder(ctx context.Context, raw string, folder *int64) (int64, error) {
 	raw = strings.TrimSpace(raw)
 	if err := ValidateURL(raw); err != nil {
-		return err
+		return 0, err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO feeds.subscriptions (url,title) VALUES ($1,$1) ON CONFLICT(url) DO UPDATE SET active=true,next_fetch_at=CASE WHEN feeds.subscriptions.active THEN feeds.subscriptions.next_fetch_at ELSE NULL END`, raw)
-	return err
+	var id int64
+	err := s.db.QueryRowContext(ctx, `INSERT INTO feeds.subscriptions(url,title,folder_id)
+ VALUES($1,$1,NULLIF($2::bigint,0))
+ ON CONFLICT(url) DO UPDATE SET active=true,
+ folder_id=CASE WHEN $2 IS NULL THEN feeds.subscriptions.folder_id ELSE NULLIF($2,0) END,
+ next_fetch_at=CASE WHEN feeds.subscriptions.active THEN feeds.subscriptions.next_fetch_at ELSE NULL END
+ RETURNING id`, raw, folder).Scan(&id)
+	return id, err
 }
 
 // Remove deactivates a subscription.
@@ -73,7 +86,7 @@ func (s *Store) ListDue(ctx context.Context) ([]Feed, error) {
 }
 
 func (s *Store) list(ctx context.Context, dueOnly bool) (out []Feed, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,url,title,checked_at,last_error,ttl_minutes,next_fetch_at,last_success_at,etag,last_modified
+	rows, err := s.db.QueryContext(ctx, `SELECT id,url,title,checked_at,last_error,ttl_minutes,next_fetch_at,last_success_at,etag,last_modified,COALESCE(folder_id,0)
  FROM feeds.subscriptions WHERE active AND (NOT $1 OR next_fetch_at IS NULL OR next_fetch_at<=now())
  ORDER BY next_fetch_at NULLS FIRST,id`, dueOnly)
 	if err != nil {
@@ -82,7 +95,7 @@ func (s *Store) list(ctx context.Context, dueOnly bool) (out []Feed, err error) 
 	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var f Feed
-		if err := rows.Scan(&f.ID, &f.URL, &f.Title, &f.CheckedAt, &f.LastError, &f.TTLMinutes, &f.NextFetchAt, &f.LastSuccessAt, &f.ETag, &f.LastModified); err != nil {
+		if err := rows.Scan(&f.ID, &f.URL, &f.Title, &f.CheckedAt, &f.LastError, &f.TTLMinutes, &f.NextFetchAt, &f.LastSuccessAt, &f.ETag, &f.LastModified, &f.FolderID); err != nil {
 			return nil, err
 		}
 		out = append(out, f)

@@ -29,7 +29,7 @@
     notice.className = "workspace-error";
     notice.setAttribute("role", "alert");
     notice.textContent = message;
-    document.body.append(notice);
+    (document.querySelector(".subscription-manager[open]") || document.body).append(notice);
   }
 
   async function navigate(raw, options = {}) {
@@ -81,7 +81,20 @@
         nextList.scrollTop = sameContext ? listScroll : 0;
         const sidebar = document.querySelector(".sidebar");
         const sidebarScroll = sidebar.scrollTop;
+        const manager = sidebar.querySelector(".subscription-manager[open]");
+        const managerScroll = manager?.scrollTop;
+        const paneScroll = new Map(Array.from(manager?.querySelectorAll("[data-manager-pane]") || [],
+          pane => [pane.dataset.managerPane, pane.scrollTop]));
+        manager?.close();
         sidebar.replaceWith(nextSidebar);
+        if (manager) {
+          const nextManager = nextSidebar.querySelector(".subscription-manager");
+          nextManager.showModal();
+          nextManager.scrollTop = managerScroll;
+          for (const pane of nextManager.querySelectorAll("[data-manager-pane]")) {
+            pane.scrollTop = paneScroll.get(pane.dataset.managerPane) ?? 0;
+          }
+        }
         nextSidebar.scrollTop = sidebarScroll;
       }
       oldReader.replaceWith(nextReader);
@@ -122,7 +135,7 @@
       currentContext = contextKey(response.url);
       if (options.history === "replace") history.replaceState({}, "", response.url);
       else if (options.history !== "none") history.pushState({}, "", response.url);
-      if (!options.keepReaderScroll) {
+      if (!options.keepReaderScroll && !document.querySelector(".subscription-manager[open]")) {
         (nextID ? nextReader : document.querySelector("#list-pane")).focus({ preventScroll: true });
         if (matchMedia("(max-width: 600px)").matches) window.scrollTo(0, nextID ? 0 : mobileListScroll);
       }
@@ -297,7 +310,7 @@
   document.addEventListener("keydown", event => {
     const target = event.target instanceof Element ? event.target : document.activeElement;
     if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || document.querySelector(".add[open]")) return;
+    if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || document.querySelector(".subscription-manager[open]")) return;
     if (event.key === " " && selectedID()) {
       if (target?.closest('button, summary, a, [role="button"]')) return;
       const pane = document.querySelector("#reader-pane");
@@ -319,7 +332,20 @@
     }
   });
 
+  document.addEventListener("close", event => {
+    if (event.target.matches?.(".subscription-manager") && event.target.isConnected) {
+      event.target.closest(".sidebar").querySelector("[data-manage-feeds]")?.focus();
+    }
+  }, true);
+
   document.addEventListener("click", (event) => {
+    const managerButton = event.target.closest("[data-manage-feeds], [data-close-manager]");
+    if (managerButton) {
+      const manager = managerButton.closest(".sidebar").querySelector(".subscription-manager");
+      if (managerButton.hasAttribute("data-manage-feeds")) manager.showModal();
+      else manager.close();
+      return;
+    }
     const row = event.target.closest("[data-article-id]");
     if (row) setCursor(row);
     const link = event.target.closest("a[data-workspace-link]");
@@ -327,6 +353,62 @@
     if (new URL(link.href).origin !== location.origin) return;
     event.preventDefault();
     void navigate(link.href);
+  });
+
+  let draggedFeed = null;
+  let dropTarget = null;
+
+  function highlightDropTarget(target) {
+    dropTarget?.classList.remove("drop-target");
+    dropTarget = target;
+    dropTarget?.classList.add("drop-target");
+  }
+
+  document.addEventListener("dragstart", event => {
+    const link = event.target.closest("[data-feed-drag]");
+    if (!link) return;
+    draggedFeed = link;
+    link.classList.add("dragging");
+    event.dataTransfer.setData("text/plain", link.textContent.trim());
+    event.dataTransfer.effectAllowed = "move";
+  });
+
+  document.addEventListener("dragover", event => {
+    if (!draggedFeed) return;
+    const target = event.target.closest("[data-folder-drop]");
+    highlightDropTarget(target);
+    if (!target) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  });
+
+  document.addEventListener("dragend", () => {
+    draggedFeed?.classList.remove("dragging");
+    draggedFeed = null;
+    highlightDropTarget(null);
+  });
+
+  document.addEventListener("drop", event => {
+    if (!draggedFeed) return;
+    const target = event.target.closest("[data-folder-drop]");
+    const source = draggedFeed;
+    source.classList.remove("dragging");
+    draggedFeed = null;
+    highlightDropTarget(null);
+    if (!target) return;
+    event.preventDefault();
+    const originalFolder = source.closest(".folder-card") || source.closest("details")?.querySelector("[data-folder-drop]");
+    if (originalFolder?.dataset.folderDrop === target.dataset.folderDrop) return;
+    void navigate(`/folders/move/${source.dataset.feedDrag}`, {
+      method: "POST",
+      body: new URLSearchParams({
+        folder: target.dataset.folderDrop,
+        return_to: location.pathname + location.search,
+      }),
+      history: "replace",
+      refreshList: true,
+      keepReaderScroll: true,
+    });
   });
 
   document.addEventListener("submit", (event) => {

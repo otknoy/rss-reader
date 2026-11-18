@@ -27,8 +27,13 @@ var ErrOPMLTooLarge = errors.New("OPMLファイルは2MB以下にしてくださ
 type ImportResult struct{ Added, Existing, Skipped int }
 
 type parsedOPML struct {
-	feeds               []Feed
+	feeds               []opmlFeed
 	duplicates, skipped int
+}
+
+type opmlFeed struct {
+	Feed
+	folder string
 }
 
 func parseOPML(input io.Reader) (parsedOPML, error) {
@@ -46,6 +51,8 @@ func parseOPML(input io.Reader) (parsedOPML, error) {
 	depth, bodyDepth, outlines := 0, 0, 0
 	rootSeen, bodySeen := false, false
 	seen := make(map[string]bool)
+	var path []string
+	var levels []int
 	for {
 		token, err := decoder.Token()
 		if errors.Is(err, io.EOF) {
@@ -93,9 +100,15 @@ func parseOPML(input io.Reader) (parsedOPML, error) {
 					kind = strings.ToLower(attr.Value)
 				}
 			}
+			if title == "" {
+				title = text
+			}
 			if rawURL == "" {
 				if kind == "rss" || kind == "atom" {
 					result.skipped++
+				} else if kind == "" && title != "" {
+					path = append(path, title)
+					levels = append(levels, depth)
 				}
 				continue
 			}
@@ -117,8 +130,12 @@ func parseOPML(input io.Reader) (parsedOPML, error) {
 			if title == "" {
 				title = rawURL
 			}
-			result.feeds = append(result.feeds, Feed{URL: rawURL, Title: title})
+			result.feeds = append(result.feeds, opmlFeed{Feed: Feed{URL: rawURL, Title: title}, folder: strings.Join(path, " / ")})
 		case xml.EndElement:
+			if len(levels) > 0 && levels[len(levels)-1] == depth {
+				levels = levels[:len(levels)-1]
+				path = path[:len(path)-1]
+			}
 			if depth == bodyDepth {
 				bodyDepth = 0
 			}
@@ -156,8 +173,15 @@ func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (result ImportR
 	for _, feed := range parsed.feeds {
 		var id int64
 		err := tx.QueryRowContext(ctx, `INSERT INTO feeds.subscriptions(url,title) VALUES($1,$2)
- ON CONFLICT(url) DO UPDATE SET active=true,next_fetch_at=NULL
- WHERE NOT feeds.subscriptions.active RETURNING id`, feed.URL, feed.Title).Scan(&id)
+ ON CONFLICT(url) DO NOTHING RETURNING id`, feed.URL, feed.Title).Scan(&id)
+		if err == nil && feed.folder != "" {
+			_, err = tx.ExecContext(ctx, `INSERT INTO feeds.folders(name) VALUES($1) ON CONFLICT(name) DO NOTHING`, feed.folder)
+			if err == nil {
+				_, err = tx.ExecContext(ctx, `UPDATE feeds.subscriptions SET folder_id=(SELECT id FROM feeds.folders WHERE name=$2) WHERE id=$1`, id, feed.folder)
+			}
+		} else if errors.Is(err, sql.ErrNoRows) {
+			err = tx.QueryRowContext(ctx, `UPDATE feeds.subscriptions SET active=true,next_fetch_at=NULL WHERE url=$1 AND NOT active RETURNING id`, feed.URL).Scan(&id)
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			result.Existing++
 			continue
@@ -174,10 +198,11 @@ func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (result ImportR
 }
 
 type opmlOutline struct {
-	Text  string `xml:"text,attr"`
-	Title string `xml:"title,attr"`
-	Type  string `xml:"type,attr"`
-	URL   string `xml:"xmlUrl,attr"`
+	Text     string        `xml:"text,attr"`
+	Title    string        `xml:"title,attr"`
+	Type     string        `xml:"type,attr,omitempty"`
+	URL      string        `xml:"xmlUrl,attr,omitempty"`
+	Children []opmlOutline `xml:"outline"`
 }
 type opmlDocument struct {
 	XMLName xml.Name `xml:"opml"`
@@ -205,9 +230,18 @@ func (s *Store) ExportOPML(ctx context.Context, output io.Writer) error {
 	})
 	doc := opmlDocument{Version: "2.0"}
 	doc.Head.Title = "RSS Reader subscriptions"
-	for _, feed := range list {
-		doc.Body.Outlines = append(doc.Body.Outlines, opmlOutline{Text: feed.Title, Title: feed.Title, Type: "rss", URL: feed.URL})
+	folders, err := s.Folders(ctx)
+	if err != nil {
+		return err
 	}
+	grouped := make(map[int64][]opmlOutline)
+	for _, feed := range list {
+		grouped[feed.FolderID] = append(grouped[feed.FolderID], opmlOutline{Text: feed.Title, Title: feed.Title, Type: "rss", URL: feed.URL})
+	}
+	for _, folder := range folders {
+		doc.Body.Outlines = append(doc.Body.Outlines, opmlOutline{Text: folder.Name, Title: folder.Name, Children: grouped[folder.ID]})
+	}
+	doc.Body.Outlines = append(doc.Body.Outlines, grouped[0]...)
 	if _, err := io.WriteString(output, xml.Header); err != nil {
 		return err
 	}
