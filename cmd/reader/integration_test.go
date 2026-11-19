@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -290,6 +291,24 @@ func TestPrototypeIntegration(t *testing.T) {
 		!strings.Contains(w.Body.String(), "更新された記事") || strings.Contains(w.Body.String(), "手動登録記事") {
 		t.Fatalf("combined unread and favorite filters: %d", w.Code)
 	}
+	t.Run("open article returns only the reader pane", func(t *testing.T) {
+		path := fmt.Sprintf("/articles/%d/open", articleID)
+		for _, changed := range []bool{true, false} {
+			w := request("POST", path, url.Values{"return_to": {selection}})
+			var opened struct {
+				HTML, SourceID string
+				Changed        bool
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &opened); err != nil {
+				t.Fatalf("open response: %d %v", w.Code, err)
+			}
+			if w.Code != http.StatusOK || opened.Changed != changed || opened.SourceID != fmt.Sprint(article.SourceID) ||
+				!strings.Contains(opened.HTML, full.Text) || !strings.Contains(opened.HTML, "未読に戻す") ||
+				strings.Contains(opened.HTML, `id="list-pane"`) || !strings.Contains(opened.HTML, `q=`) {
+				t.Fatalf("unexpected partial open response: %d, changed=%v", w.Code, opened.Changed)
+			}
+		}
+	})
 	if w := request("POST", fmt.Sprintf("/articles/%d/delete", articleID), url.Values{"return_to": {selection}}); w.Code != http.StatusNotFound {
 		t.Fatalf("article deletion is still exposed over HTTP: %d", w.Code)
 	}
@@ -583,10 +602,10 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		page := request("GET", "/?q=no-matching-article", nil)
-		if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<span>空のフォルダー</span><span class="unread-badge"><span class="visually-hidden">未読 </span>1`) {
+		if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<span>空のフォルダー</span><span class="unread-badge"><span class="visually-hidden">未読 </span><span data-unread-count>1`) {
 			t.Fatalf("folder unread count missing from filtered page: %d", page.Code)
 		}
-		if !strings.Contains(page.Body.String(), fmt.Sprintf(`<span>%s</span><span class="unread-badge"><span class="visually-hidden">未読 </span>1`, saved.Title)) {
+		if !strings.Contains(page.Body.String(), fmt.Sprintf(`<span>%s</span><span class="unread-badge"><span class="visually-hidden">未読 </span><span data-unread-count>1`, saved.Title)) {
 			t.Fatal("feed unread count missing from filtered page")
 		}
 		first, second := fmt.Sprint(emptyID), fmt.Sprint(find(after, newURL).FolderID)

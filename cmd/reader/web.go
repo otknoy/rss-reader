@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	_ "embed"
@@ -87,6 +88,7 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /refresh", a.refresh)
 	mux.HandleFunc("POST /articles", a.addArticle)
 	mux.HandleFunc("POST /articles/{id}/state", a.state)
+	mux.HandleFunc("POST /articles/{id}/open", a.openArticle)
 	mux.HandleFunc("GET /articles/{id}/content-status", a.contentStatus)
 	mux.HandleFunc("POST /articles/{id}/content-status", a.contentStatus)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -452,6 +454,36 @@ func (a *application) addArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirect(w, r, "saved")
+}
+
+func (a *application) openArticle(w http.ResponseWriter, r *http.Request) {
+	n, err := id(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	item, changed, err := a.articles.Open(r.Context(), n)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	listURL := articleURL(returnTo(r), 0)
+	var reader bytes.Buffer
+	if err := page.ExecuteTemplate(&reader, "reader-pane", view{
+		Detail: &item, ListURL: listURL, ReturnTo: articleURL(listURL, n),
+	}); err != nil {
+		fail(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	payload := struct {
+		HTML     string `json:"html"`
+		SourceID string `json:"sourceId"`
+		Changed  bool   `json:"changed"`
+	}{reader.String(), strconv.FormatInt(item.SourceID, 10), changed}
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("write article pane: %v", err)
+	}
 }
 
 func (a *application) state(w http.ResponseWriter, r *http.Request) {

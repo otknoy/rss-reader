@@ -87,6 +87,17 @@ func (s *Store) Get(ctx context.Context, id int64) (Article, error) {
 	return scan(s.db.QueryRowContext(ctx, `SELECT `+columns+` FROM articles.entries WHERE id=$1 AND deleted_at IS NULL`, id))
 }
 
+// Open marks an article as read and reports whether that changed its state.
+func (s *Store) Open(ctx context.Context, id int64) (Article, bool, error) {
+	article, err := scan(s.db.QueryRowContext(ctx, `UPDATE articles.entries SET is_read=true
+		WHERE id=$1 AND deleted_at IS NULL AND NOT is_read RETURNING `+columns, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		article, err = s.Get(ctx, id)
+		return article, false, err
+	}
+	return article, err == nil, err
+}
+
 // SetState updates the read or favorite state of an article.
 func (s *Store) SetState(ctx context.Context, id int64, kind string, value bool) error {
 	field := ""

@@ -349,32 +349,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   {{end}}
   <span id="keyboard-status" class="visually-hidden" role="status" aria-atomic="true"></span>
 </section>
-<section id="reader-pane" class="reader-pane" aria-label="記事の本文" tabindex="-1">
-{{if .Detail}}
-  <div class="reader-toolbar"><span class="muted">記事</span><a class="button" href="{{.ListURL}}" data-workspace-link aria-label="記事を閉じる">閉じる</a></div>
-  <article class="reader" data-reading-id="{{.Detail.ID}}" data-content-pending="{{.Detail.FullContentPending}}" data-content-error="{{if .Detail.FullFetchError}}true{{else}}false{{end}}">
-  {{with .Detail}}
-    <div class="meta"><span>{{.SourceName}}</span><time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time></div>
-    <h1>{{.Title}}</h1>
-    <div class="actions">
-      <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
-      <form method="post" action="/articles/{{.ID}}/state">
-        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
-        <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
-      </form>
-      <form method="post" action="/articles/{{.ID}}/state">
-        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
-        <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
-      </form>
-    </div>
-    {{if .FullContentPending}}<p class="muted" role="status">{{if .FullFetchError}}本文の自動取得に失敗しました。後で再試行します。{{else}}本文は自動取得され次第、ここに表示されます。{{end}}</p>{{end}}
-    <p class="muted content-source">{{if .FullFetchedAt}}元ページから取得した本文{{else if .SourceID}}RSSに含まれる本文・要約{{else}}登録した本文・メモ{{end}}</p>
-    {{$body := richArticle .}}{{if $body}}<div class="body">{{$body}}</div>{{else}}<div class="body plain">{{if .FullBodyText}}{{.FullBodyText}}{{else if .BodyText}}{{.BodyText}}{{else}}{{if .FullFetchError}}本文を表示できませんでした。上の「元記事」からお読みください。{{else}}本文を取得しています。上の「元記事」からも読めます。{{end}}{{end}}</div>{{end}}
-  {{end}}
-  </article>
-
-{{else}}<div class="reader-placeholder">一覧から記事を選択してください</div>{{end}}
-</section>
+{{template "reader-pane" .}}
 </main>
 </div>
 <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
@@ -411,4 +386,33 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 </li>
 {{end}}
 
-{{define "unread-badge"}}{{if .}}<span class="unread-badge"><span class="visually-hidden">未読 </span>{{.}}<span class="visually-hidden"> 件</span></span>{{end}}{{end}}
+{{define "unread-badge"}}{{if .}}<span class="unread-badge"><span class="visually-hidden">未読 </span><span data-unread-count>{{.}}</span><span class="visually-hidden"> 件</span></span>{{end}}{{end}}
+
+{{define "reader-pane"}}
+<section id="reader-pane" class="reader-pane" aria-label="記事の本文" tabindex="-1">
+{{if .Detail}}
+  <div class="reader-toolbar"><span class="muted">記事</span><a class="button" href="{{.ListURL}}" data-workspace-link aria-label="記事を閉じる">閉じる</a></div>
+  <article class="reader" data-reading-id="{{.Detail.ID}}" data-content-pending="{{.Detail.FullContentPending}}" data-content-error="{{if .Detail.FullFetchError}}true{{else}}false{{end}}">
+  {{with .Detail}}
+    <div class="meta"><span>{{.SourceName}}</span><time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time></div>
+    <h1>{{.Title}}</h1>
+    <div class="actions">
+      <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
+      <form method="post" action="/articles/{{.ID}}/state">
+        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
+        <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
+      </form>
+      <form method="post" action="/articles/{{.ID}}/state">
+        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
+        <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
+      </form>
+    </div>
+    {{if .FullContentPending}}<p class="muted" role="status">{{if .FullFetchError}}本文の自動取得に失敗しました。後で再試行します。{{else}}本文は自動取得され次第、ここに表示されます。{{end}}</p>{{end}}
+    <p class="muted content-source">{{if .FullFetchedAt}}元ページから取得した本文{{else if .SourceID}}RSSに含まれる本文・要約{{else}}登録した本文・メモ{{end}}</p>
+    {{$body := richArticle .}}{{if $body}}<div class="body">{{$body}}</div>{{else}}<div class="body plain">{{if .FullBodyText}}{{.FullBodyText}}{{else if .BodyText}}{{.BodyText}}{{else}}{{if .FullFetchError}}本文を表示できませんでした。上の「元記事」からお読みください。{{else}}本文を取得しています。上の「元記事」からも読めます。{{end}}{{end}}</div>{{end}}
+  {{end}}
+  </article>
+
+{{else}}<div class="reader-placeholder">一覧から記事を選択してください</div>{{end}}
+</section>
+{{end}}

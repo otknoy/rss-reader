@@ -67,11 +67,16 @@
         body: options.body,
         signal: controller.signal,
         credentials: "same-origin",
-        headers: { Accept: "text/html" },
+        headers: { Accept: options.openURL ? "application/json" : "text/html" },
       });
       if (!response.ok) {
         const message = await response.text();
         throw new Error(message.length < 300 ? message : "読み込めませんでした。再度お試しください。");
+      }
+      if (options.openURL) {
+        const result = await response.json();
+        if (controller.signal.aborted) return;
+        return applyOpenedArticle(options.openURL, result);
       }
       const html = await response.text();
       if (controller.signal.aborted) return;
@@ -142,28 +147,14 @@
       oldReader.replaceWith(nextReader);
       if (options.keepReaderScroll && oldID === nextID) nextReader.scrollTop = readerScroll;
       document.querySelector(".shell").classList.toggle("has-detail", Boolean(nextID));
-      for (const row of document.querySelectorAll("[data-article-id]")) {
-        const selected = row.dataset.articleId === nextID;
-        row.classList.toggle("selected", selected);
-        const link = row.querySelector("a[data-workspace-link]");
-        if (selected) link.setAttribute("aria-current", "true");
-        else link.removeAttribute("aria-current");
-        // Forms in the retained list must return to the new selection as well.
-        for (const input of row.querySelectorAll('input[name="return_to"]')) {
-          input.value = nextList.querySelector('input[name="return_to"]')?.value || response.url;
-        }
-      }
+      updateSelectedRows(nextID, nextList.querySelector('input[name="return_to"]')?.value || response.url);
       if (sameContext && (!options.refreshList || keepArticleList)) {
         document.querySelector("#list-pane .notice")?.remove();
         oldList.scrollTop = listScroll;
       }
 
       const rows = articleRows();
-      if (options.markRead && nextID) {
-        const row = rows.find(item => item.dataset.articleId === nextID);
-        setCursor(row, true);
-
-      } else if (!sameContext || nextID !== oldID) {
+      if (!sameContext || nextID !== oldID) {
         setCursor(rows.find(row => row.dataset.articleId === nextID));
       } else {
         setCursor(rows.find(row => row.dataset.articleId === keyboardCursorID) || (cursorIndex >= 0 ? rows[Math.min(cursorIndex, rows.length - 1)] : null));
@@ -287,16 +278,64 @@
     if (status && previous !== keyboardCursorID) status.textContent = row?.querySelector("h2")?.textContent || "";
   }
 
-  async function openArticle(row, href) {
+  function updateSelectedRows(id, returnTo) {
+    for (const row of articleRows()) {
+      const selected = row.dataset.articleId === id;
+      row.classList.toggle("selected", selected);
+      const link = row.querySelector("h2 a");
+      if (selected) link.setAttribute("aria-current", "true");
+      else link.removeAttribute("aria-current");
+      for (const input of row.querySelectorAll('input[name="return_to"]')) input.value = returnTo;
+    }
+  }
+
+  function decrementUnreadBadge(link) {
+    const count = link?.querySelector("[data-unread-count]");
+    if (!count) return;
+    const remaining = Number(count.textContent) - 1;
+    if (remaining > 0) count.textContent = remaining;
+    else count.closest(".unread-badge").remove();
+  }
+
+  function applyOpenedArticle(url, result) {
+    const next = new DOMParser().parseFromString(result.html, "text/html");
+    const reader = next.querySelector("#reader-pane");
+    const id = selectedID(next);
+    const row = articleRows().find(item => item.dataset.articleId === id);
+    if (!reader || !row || id !== url.searchParams.get("article")) {
+      throw new Error("記事を開けませんでした。");
+    }
+
+    if (!selectedID()) mobileListScroll = window.scrollY;
+    updateReadRow(row, true);
+    if (result.changed) {
+      const feed = document.querySelector(`.feed-list a[data-feed-drag="${CSS.escape(result.sourceId)}"]`);
+      decrementUnreadBadge(feed);
+      decrementUnreadBadge(feed?.closest("[data-sidebar-folder]")?.querySelector("summary > a"));
+      if (["unread", "unread-favorites"].includes(url.searchParams.get("view"))) {
+        const count = document.querySelector("#list-pane .results .muted");
+        count.textContent = Math.max(0, parseInt(count.textContent, 10) - 1) + "件";
+      }
+    }
+
+    document.querySelector("#reader-pane").replaceWith(reader);
+    document.querySelector(".shell").classList.add("has-detail");
+    updateSelectedRows(id, url.pathname + url.search);
     setCursor(row, true);
+    history.pushState({}, "", url);
+    if (!document.querySelector("dialog[open]")) {
+      reader.focus({ preventScroll: true });
+      if (matchMedia("(max-width: 600px)").matches) window.scrollTo(0, 0);
+    }
+    return true;
+  }
+
+  async function openArticle(row, href) {
     const url = new URL(href);
-    const form = row.querySelector('input[name="kind"][value="read"]').form;
-    await navigate(form.action, {
+    await navigate(`/articles/${row.dataset.articleId}/open`, {
       method: "POST",
-      body: new URLSearchParams({ kind: "read", value: "true", return_to: url.pathname + url.search }),
-      refreshList: true,
-      markRead: true,
-      stateChange: { id: row.dataset.articleId, kind: "read", value: "true" },
+      body: new URLSearchParams({ return_to: url.pathname + url.search }),
+      openURL: url,
     });
   }
 
