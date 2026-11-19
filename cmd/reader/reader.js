@@ -10,6 +10,7 @@
   let keyboardCursorID = selectedID();
   let pageMovePending = false;
   let favoritePending = false;
+  let nextPageRequest;
 
   const pendingFolderStates = new Map();
   let folderOrderPending = false;
@@ -102,10 +103,10 @@
       if (!oldID && nextID) mobileListScroll = window.scrollY;
 
       const filter = new URL(response.url).searchParams.get("view");
-      const keepUnreadPage = sameContext && (filter === "unread" || filter === "unread-favorites") &&
+      const keepArticleList = sameContext && filter !== "read" &&
         (change?.kind === "read" || change?.kind === "favorite");
       const refreshWorkspace = !sameContext || options.refreshList;
-      if (keepUnreadPage) {
+      if (keepArticleList) {
         const row = articleRows().find(item => item.dataset.articleId === change.id);
         if (row && change.kind === "read") updateReadRow(row, change.value === "true");
         if (row && change.kind === "favorite") {
@@ -115,6 +116,7 @@
         oldList.querySelector(".results .muted").textContent = nextList.querySelector(".results .muted").textContent;
       } else if (refreshWorkspace) {
         oldList.replaceWith(nextList);
+        observeNextPage();
         nextList.scrollTop = sameContext ? listScroll : 0;
       }
       if (refreshWorkspace) {
@@ -151,7 +153,7 @@
           input.value = nextList.querySelector('input[name="return_to"]')?.value || response.url;
         }
       }
-      if (sameContext && (!options.refreshList || keepUnreadPage)) {
+      if (sameContext && (!options.refreshList || keepArticleList)) {
         document.querySelector("#list-pane .notice")?.remove();
         oldList.scrollTop = listScroll;
       }
@@ -160,8 +162,7 @@
       if (options.markRead && nextID) {
         const row = rows.find(item => item.dataset.articleId === nextID);
         setCursor(row, true);
-      } else if (options.cursorEdge) {
-        setCursor(options.cursorEdge === "first" ? rows[0] : rows.at(-1), true);
+
       } else if (!sameContext || nextID !== oldID) {
         setCursor(rows.find(row => row.dataset.articleId === nextID));
       } else {
@@ -297,22 +298,79 @@
     });
   }
 
+  const nextPageObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) void loadNextPage(entry.target);
+    }
+  });
+
+  function observeNextPage() {
+    nextPageObserver.disconnect();
+    const link = document.querySelector("[data-next-articles]");
+    if (link) nextPageObserver.observe(link);
+  }
+
+  async function appendNextPage(link) {
+    const footer = link.closest(".auto-paging");
+    link.setAttribute("aria-busy", "true");
+    try {
+      const response = await fetch(link.href, { credentials: "same-origin" });
+      if (!response.ok) throw new Error();
+      const html = await response.text();
+      if (!link.isConnected) return;
+      const page = new DOMParser().parseFromString(html, "text/html").querySelector("#list-pane");
+      if (!page) throw new Error();
+
+      const existing = new Set(articleRows().map(row => row.dataset.articleId));
+      for (const row of page.querySelectorAll("[data-article-id]")) {
+        if (existing.has(row.dataset.articleId)) continue;
+        const articleLink = row.querySelector("h2 a");
+        const articleURL = new URL(location.href);
+        articleURL.searchParams.set("article", row.dataset.articleId);
+        articleLink.href = articleURL.href;
+        for (const input of row.querySelectorAll('input[name="return_to"]')) {
+          input.value = location.pathname + location.search;
+        }
+        footer.before(row);
+      }
+      const next = page.querySelector(".auto-paging");
+      const nextHref = next?.querySelector("a").getAttribute("href");
+      if (nextHref && new URL(nextHref, response.url).href !== link.href) footer.replaceWith(next);
+      else footer.remove();
+      observeNextPage();
+    } catch {
+      if (link.isConnected) {
+        nextPageObserver.unobserve(link);
+        showError("次の記事を読み込めませんでした。もう一度お試しください。");
+      }
+    } finally {
+      link.removeAttribute("aria-busy");
+    }
+  }
+
+  function loadNextPage(link) {
+    if (!link?.isConnected) return;
+    if (nextPageRequest?.link === link) return nextPageRequest.done;
+    const done = appendNextPage(link);
+    nextPageRequest = { link, done };
+    void done.finally(() => {
+      if (nextPageRequest?.link === link) nextPageRequest = undefined;
+    });
+    return done;
+  }
+
   async function moveCursor(delta) {
     if (pageMovePending || favoritePending) return;
     pageMovePending = true;
     try {
       let rows = articleRows();
       const index = rows.findIndex(row => row.dataset.articleId === keyboardCursorID);
-      let next = index < 0 ? 0 : index + delta;
-      if (!rows[next]) {
-        const direction = delta > 0 ? "next" : "previous";
-        const link = document.querySelector(`[data-keyboard-page="${direction}"]`);
-        if (!link) return;
-        const url = new URL(link.href);
-        if (selectedID()) url.searchParams.set("article", selectedID());
-        if (!await navigate(url, { cursorEdge: delta > 0 ? "first" : "last", keepReaderScroll: true })) return;
+      const next = index < 0 ? 0 : index + delta;
+      if (!rows[next] && delta > 0) {
+        const list = document.querySelector("#list-pane");
+        await loadNextPage(list.querySelector("[data-next-articles]"));
+        if (!list.isConnected) return;
         rows = articleRows();
-        next = rows.findIndex(row => row.dataset.articleId === keyboardCursorID);
       }
       const row = rows[next];
       if (!row) return;
@@ -464,6 +522,12 @@
   }, true);
 
   document.addEventListener("click", async (event) => {
+    const nextPage = event.target.closest("[data-next-articles]");
+    if (nextPage && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+      event.preventDefault();
+      await loadNextPage(nextPage);
+      return;
+    }
     if (event.target.closest("[data-show-shortcuts]")) {
       document.querySelector("#shortcuts-dialog").showModal();
       return;
@@ -598,5 +662,6 @@
   addEventListener("popstate", () => void navigate(location.href, { history: "none" }));
   setCursor(articleRows().find(row => row.dataset.articleId === keyboardCursorID));
   restoreFolders(document.querySelector(".sidebar"));
+  observeNextPage();
   scheduleContentCheck();
 })();

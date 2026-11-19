@@ -183,9 +183,10 @@ func (a *application) base(r *http.Request) (view, error) {
 		filter = ""
 	}
 	unreadOnly := filter == "unread" || filter == "unread-favorites"
+	anchoredList := unreadOnly || filter == "favorites"
 	var anchorID int64
 	var beforeAnchor bool
-	if unreadOnly {
+	if anchoredList {
 		anchorID, _ = strconv.ParseInt(q.Get("before"), 10, 64)
 		beforeAnchor = anchorID > 0
 		if !beforeAnchor {
@@ -252,7 +253,7 @@ func (a *application) base(r *http.Request) (view, error) {
 		back += "?" + q.Encode()
 	}
 	prev, next := "", ""
-	if unreadOnly {
+	if anchoredList {
 		q.Del("page")
 		q.Del("before")
 		q.Del("after")

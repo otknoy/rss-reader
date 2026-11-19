@@ -145,7 +145,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .actions .star { min-width: 32px; font-size: 17px; line-height: 1.5; }
 .favorite { color: #e6c677; }
 .empty { padding: 48px 0; text-align: center; color: var(--muted); }
-.pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
+.auto-paging { margin-top: 24px; text-align: center; }
 .reader { max-width: 720px; margin: 24px auto; }
 .reader h1 { font-size: 26px; line-height: 1.65; margin: 14px 0 20px; overflow-wrap: anywhere; }
 .body { overflow-wrap: anywhere; line-height: 1.95; margin-top: 32px; font-size: 16px; }
@@ -341,12 +341,10 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     </div>
   </article>
   {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「購読を管理」からフィードを登録できます。{{end}}</p>{{end}}
-  {{if or .Previous .Next}}
-  <nav class="pagination" aria-label="ページ送り">
-    <span>{{if .Previous}}<a class="button" data-workspace-link data-keyboard-page="previous" href="{{.Previous}}">前へ</a>{{end}}</span>
-    {{if not .UnreadOnly}}<span class="muted">{{.Result.Page}} / {{.Result.Pages}}</span>{{end}}
-    <span>{{if .Next}}<a class="button" data-workspace-link data-keyboard-page="next" href="{{.Next}}">次へ</a>{{end}}</span>
-  </nav>
+  {{if .Next}}
+  <div class="auto-paging">
+    <a class="button" data-next-articles href="{{.Next}}">さらに読み込む</a>
+  </div>
   {{end}}
   <span id="keyboard-status" class="visually-hidden" role="status" aria-atomic="true"></span>
 </section>
