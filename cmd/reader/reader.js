@@ -507,6 +507,9 @@
     } else if (!event.shiftKey && event.key === "f") {
       event.preventDefault();
       if (!event.repeat) void toggleCursorFavorite();
+    } else if (!event.shiftKey && event.key === "r") {
+      event.preventDefault();
+      if (!event.repeat) location.assign("/");
     }
   });
 
