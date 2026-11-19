@@ -204,7 +204,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <button>検索</button>
   </form>
   <nav class="sort-options result-filters" aria-label="記事の絞り込み">
-    <a class="button" href="{{.UnreadURL}}" data-workspace-link {{if .UnreadOnly}}aria-current="true"{{end}}>未読</a>
+    <a class="button" href="{{.UnreadURL}}" data-workspace-link data-unread-filter {{if .UnreadOnly}}aria-current="true"{{end}}>未読</a>
     <a class="button" href="{{.FavoritesURL}}" data-workspace-link {{if .FavoritesOnly}}aria-current="true"{{end}}>お気に入り</a>
   </nav>
   <section class="feeds" aria-label="購読フィード">

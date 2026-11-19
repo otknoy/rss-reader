@@ -312,7 +312,7 @@
       const feed = document.querySelector(`.feed-list a[data-feed-drag="${CSS.escape(result.sourceId)}"]`);
       decrementUnreadBadge(feed);
       decrementUnreadBadge(feed?.closest("[data-sidebar-folder]")?.querySelector("summary > a"));
-      if (["unread", "unread-favorites"].includes(url.searchParams.get("view"))) {
+      if (document.querySelector('[data-unread-filter][aria-current="true"]')) {
         const count = document.querySelector("#list-pane .results .muted");
         count.textContent = Math.max(0, parseInt(count.textContent, 10) - 1) + "件";
       }

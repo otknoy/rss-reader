@@ -182,8 +182,14 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 	p, _ := strconv.Atoi(q.Get("page"))
 	filter := q.Get("view")
-	if filter != "unread" && filter != "read" && filter != "favorites" && filter != "unread-favorites" {
-		filter = ""
+	switch filter {
+	case "all", "unread", "read", "favorites", "unread-favorites":
+	default:
+		filter = "unread"
+	}
+	queryFilter := filter
+	if filter == "all" {
+		queryFilter = ""
 	}
 	unreadOnly := filter == "unread" || filter == "unread-favorites"
 	anchoredList := unreadOnly || filter == "favorites"
@@ -232,7 +238,7 @@ func (a *application) base(r *http.Request) (view, error) {
 		}
 	}
 	result, err := a.search.Find(r.Context(), articles.Query{
-		Text: q.Get("q"), View: filter, FeedID: feedID, FeedIDs: ids, Page: p,
+		Text: q.Get("q"), View: queryFilter, FeedID: feedID, FeedIDs: ids, Page: p,
 		NewestFirst: newestFirst, AnchorID: anchorID, BeforeAnchor: beforeAnchor,
 	})
 	if err != nil {
@@ -296,7 +302,7 @@ func (a *application) base(r *http.Request) (view, error) {
 		case favorite:
 			q.Set("view", "favorites")
 		default:
-			q.Del("view")
+			q.Set("view", "all")
 		}
 		if len(q) == 0 {
 			return "/"
@@ -305,10 +311,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 	unreadURL := filterURL(!unreadOnly, favoritesOnly)
 	favoritesURL := filterURL(unreadOnly, !favoritesOnly)
-	q.Del("view")
-	if filter != "" {
-		q.Set("view", filter)
-	}
+	q.Set("view", filter)
 	q.Del("sort")
 	oldestURL := "/"
 	if len(q) > 0 {

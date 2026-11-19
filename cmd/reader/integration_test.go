@@ -239,7 +239,7 @@ func TestPrototypeIntegration(t *testing.T) {
 		app.routes().ServeHTTP(w, req)
 		return w
 	}
-	if w := request("GET", "/?q=日本語", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "更新された記事") {
+	if w := request("GET", "/?q=日本語&view=all", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "更新された記事") {
 		t.Fatalf("search HTTP: %d %s", w.Code, w.Body.String())
 	}
 	if w := request("GET", fmt.Sprintf("/articles/%d", articleID), nil); w.Code != 200 || !strings.Contains(w.Body.String(), full.Text) {
@@ -280,6 +280,15 @@ func TestPrototypeIntegration(t *testing.T) {
 	if w := request("GET", "/?view=read", nil); w.Code != http.StatusOK ||
 		!strings.Contains(w.Body.String(), "更新された記事") || strings.Contains(w.Body.String(), "手動登録記事") {
 		t.Fatalf("read filter did not select only read articles: %d", w.Code)
+	}
+	if w := request("GET", "/", nil); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), `href="/?view=all" data-workspace-link data-unread-filter aria-current="true"`) ||
+		strings.Contains(w.Body.String(), "更新された記事") || !strings.Contains(w.Body.String(), "手動登録記事") {
+		t.Fatalf("default view did not select only unread articles: %d", w.Code)
+	}
+	if w := request("GET", "/?view=all", nil); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), "更新された記事") || !strings.Contains(w.Body.String(), "手動登録記事") {
+		t.Fatalf("all view did not include both read and unread articles: %d", w.Code)
 	}
 	if w := request("POST", fmt.Sprintf("/articles/%d/state", articleID), url.Values{"kind": {"read"}, "value": {"false"}}); w.Code != 303 {
 		t.Fatalf("state HTTP: %d", w.Code)
@@ -706,7 +715,7 @@ func TestPrototypeIntegration(t *testing.T) {
 			{"", "01", "02"},
 			{"&sort=newest", "21", "20"},
 		} {
-			w := request("GET", "/?q=sort-fixture"+tc.query, nil)
+			w := request("GET", "/?q=sort-fixture"+tc.query+"&view=all", nil)
 			first := strings.Index(w.Body.String(), ">sort-fixture-"+tc.first+"</a>")
 			second := strings.Index(w.Body.String(), ">sort-fixture-"+tc.second+"</a>")
 			if w.Code != http.StatusOK || first < 0 || second <= first ||
