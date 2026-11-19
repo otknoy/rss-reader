@@ -68,6 +68,7 @@ type view struct {
 func (a *application) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", a.index)
+	mux.HandleFunc("GET /admin/database", a.database)
 	mux.HandleFunc("GET /assets/reader.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		if _, err := w.Write([]byte(readerJS)); err != nil {

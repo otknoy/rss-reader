@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DB管理 | RSS Reader</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #141618; color: #e4e6e8; font: 15px/1.6 system-ui, sans-serif; }
+  main { max-width: 1500px; margin: auto; padding: 20px; }
+  a { color: #a5c7b0; }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
+  nav a { padding: 4px 10px; border: 1px solid #555d60; border-radius: 6px; text-decoration: none; }
+  nav a[aria-current] { background: #272d29; border-color: #a5c7b0; }
+  .table-scroll { overflow-x: auto; margin-block: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #34383d; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #1c1f22; white-space: nowrap; }
+  tbody tr:nth-child(even) td { background: #181b1e; }
+  td code { display: block; max-width: 34ch; max-height: 8em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .record td { width: 100%; }
+  .record td code { max-width: none; max-height: none; }
+</style>
+</head>
+<body>
+<main>
+  <a href="/">RSS Readerに戻る</a>
+  <h1>DB管理</h1>
+  <nav aria-label="テーブル">
+    <a href="?table=subscriptions" {{if eq .Table "subscriptions"}}aria-current="page"{{end}}>購読</a>
+    <a href="?table=folders" {{if eq .Table "folders"}}aria-current="page"{{end}}>フォルダー</a>
+    <a href="?table=closed_folders" {{if eq .Table "closed_folders"}}aria-current="page"{{end}}>閉じているフォルダー</a>
+    <a href="?table=entries" {{if eq .Table "entries"}}aria-current="page"{{end}}>記事</a>
+  </nav>
+  <h2><code>{{.QualifiedTable}}</code></h2>
+  {{if not .Back}}<p>{{.Page}}ページ目 · {{len .Rows}}件表示</p>{{end}}
+  {{if .Back}}<a href="{{.Back}}">記事レコード一覧へ</a>{{end}}
+  {{if .Rows}}
+  <div class="table-scroll" role="region" aria-label="{{.QualifiedTable}} のデータ" tabindex="0">
+  {{if .Back}}
+    <table class="record" aria-label="{{.QualifiedTable}} のレコード">
+      <thead><tr><th scope="col">列名</th><th scope="col">値</th></tr></thead>
+      <tbody>
+      {{range .Rows}}{{range $index, $value := .Values}}
+        <tr><th scope="row"><code>{{index $.Columns $index}}</code></th><td><code>{{$value}}</code></td></tr>
+      {{end}}{{end}}
+      </tbody>
+    </table>
+  {{else}}
+    <table aria-label="{{.QualifiedTable}}">
+      <thead><tr>
+        {{if eq .Table "entries"}}<th scope="col">詳細</th>{{end}}
+        {{range .Columns}}<th scope="col"><code>{{.}}</code></th>{{end}}
+      </tr></thead>
+      <tbody>
+      {{range .Rows}}
+        <tr>
+          {{if .Detail}}<td><a href="{{.Detail}}">全フィールド</a></td>{{end}}
+          {{range .Values}}<td><code>{{.}}</code></td>{{end}}
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  {{end}}
+  </div>
+  {{else}}<p>レコードがありません。</p>{{end}}
+  {{if or .Previous .Next}}
+  <nav aria-label="ページ送り">
+    {{if .Previous}}<a href="{{.Previous}}">前へ</a>{{end}}
+    {{if .Next}}<a href="{{.Next}}">次へ</a>{{end}}
+  </nav>
+  {{end}}
+</main>
+</body>
+</html>

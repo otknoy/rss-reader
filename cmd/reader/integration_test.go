@@ -244,6 +244,28 @@ func TestPrototypeIntegration(t *testing.T) {
 	if w := request("GET", fmt.Sprintf("/articles/%d", articleID), nil); w.Code != 200 || !strings.Contains(w.Body.String(), full.Text) {
 		t.Fatalf("detail HTTP: %d", w.Code)
 	}
+	t.Run("read-only database inspection", func(t *testing.T) {
+		for _, table := range []string{"subscriptions", "folders", "closed_folders", "entries"} {
+			if w := request("GET", "/admin/database?table="+table, nil); w.Code != http.StatusOK {
+				t.Fatalf("inspect %s: %d", table, w.Code)
+			}
+		}
+		list := request("GET", "/admin/database?table=entries", nil)
+		if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "<table") ||
+			!strings.Contains(list.Body.String(), "<code>is_read</code>") {
+			t.Fatalf("inspect article table: %d", list.Code)
+		}
+		w := request("GET", fmt.Sprintf("/admin/database?table=entries&id=%d", articleID), nil)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), full.Text) {
+			t.Fatalf("inspect article body: %d", w.Code)
+		}
+		if w := request("GET", "/admin/database?table=unknown", nil); w.Code != http.StatusNotFound {
+			t.Fatalf("unknown table status: %d", w.Code)
+		}
+		if w := request("POST", "/admin/database", nil); w.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("database inspection accepted a write method: %d", w.Code)
+		}
+	})
 	selection := fmt.Sprintf("/?article=%d&q=日本語&feed=%d", articleID, article.SourceID)
 	if w := request("GET", selection, nil); w.Code != 200 || !strings.Contains(w.Body.String(), `data-reading-id="`+fmt.Sprint(articleID)+`"`) || !strings.Contains(w.Body.String(), `id="list-pane"`) {
 		t.Fatalf("workspace selection: %d %s", w.Code, w.Body.String())
