@@ -74,6 +74,7 @@ func (s *Store) Save(ctx context.Context, a Article) error {
 }
 
 const columns = `id,source_id,external_id,source_name,url,title,body_text,body_html,published_at,is_read,favorite,full_body_html,full_body_text,full_source_url,full_fetched_at,(full_next_fetch_at IS NOT NULL),full_fetch_error`
+const listColumns = `id,source_id,source_name,url,title,published_at,is_read,favorite`
 
 func scan(row interface{ Scan(...any) error }) (Article, error) {
 	var a Article
@@ -141,7 +142,7 @@ func (s *Store) UnreadByFeed(ctx context.Context) (counts map[int64]int, err err
 	return counts, rows.Err()
 }
 
-// Search returns matching articles and their total count.
+// Search returns list metadata and the total number of matches. Get loads an article's body.
 func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	r = Result{Page: q.Page}
 	if r.Page < 1 {
@@ -182,14 +183,14 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	}
 	args = append(args, pageSize, offset)
 	paging := fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args))
-	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries`+where+` ORDER BY `+order+paging, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+listColumns+` FROM articles.entries`+where+` ORDER BY `+order+paging, args...)
 	if err != nil {
 		return r, err
 	}
 	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
-		a, err := scan(rows)
-		if err != nil {
+		var a Article
+		if err := rows.Scan(&a.ID, &a.SourceID, &a.SourceName, &a.URL, &a.Title, &a.PublishedAt, &a.IsRead, &a.Favorite); err != nil {
 			return r, err
 		}
 		r.Items = append(r.Items, a)

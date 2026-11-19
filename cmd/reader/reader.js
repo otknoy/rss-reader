@@ -262,11 +262,13 @@
     }
 
     // Keep five titles on either side when the list pane has enough room.
-    const titles = rows.map(item => item.querySelector("h2").getBoundingClientRect());
-    let first = Math.max(0, index - 5);
-    let last = Math.min(rows.length - 1, index + 5);
+    const start = Math.max(0, index - 5);
+    const titles = rows.slice(start, index + 6).map(item => item.querySelector("h2").getBoundingClientRect());
+    const current = index - start;
+    let first = 0;
+    let last = titles.length - 1;
     while (titles[last].bottom - titles[first].top > pane.clientHeight && first < last) {
-      if (index - first > last - index) first++;
+      if (current - first > last - current) first++;
       else last--;
     }
     const top = pane.getBoundingClientRect().top + pane.clientTop;
