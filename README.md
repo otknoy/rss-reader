@@ -1,4 +1,4 @@
-# 余白 / RSS Reader
+# RSS Reader
 
 GoとPostgreSQLで動く、個人用のRSSリーダーです。RSS・Atomの自動更新、記事本文の取得、未読・お気に入り、検索、OPMLの入出力に対応しています。
 
