@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:17.6-bookworm
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
     restart: unless-stopped
     environment:
       POSTGRES_DB: reader
@@ -12,7 +13,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./docker/init-db.sh:/docker-entrypoint-initdb.d/01-roles.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d reader"]
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "reader"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -66,6 +67,49 @@ services:
       timeout: 3s
       retries: 3
 
+  postgres-monitor-setup:
+    image: postgres:17.6-bookworm
+    entrypoint: ["/bin/sh", "/setup-postgres-monitor.sh"]
+    environment:
+      PGHOST: db
+      PGDATABASE: reader
+      PGUSER: postgres
+      PGPASSWORD: ${DB_PASSWORD:-local-admin}
+      POSTGRES_EXPORTER_PASSWORD: ${POSTGRES_EXPORTER_PASSWORD:-local-monitor}
+    volumes:
+      - ./docker/setup-postgres-monitor.sh:/setup-postgres-monitor.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    command:
+      - --collector.stat_statements
+      - --collector.stat_statements.include_query
+      - --collector.stat_statements.exclude_users=postgres,reader_monitor
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: db:5432/reader?sslmode=disable
+      DATA_SOURCE_USER: reader_monitor
+      DATA_SOURCE_PASS: ${POSTGRES_EXPORTER_PASSWORD:-local-monitor}
+    depends_on:
+      postgres-monitor-setup:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+
+  prometheus:
+    image: prom/prometheus:v3.5.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - prometheus-data:/prometheus
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
+
   test:
     profiles: [test]
     image: rss-reader:test
@@ -82,3 +126,8 @@ services:
 
 volumes:
   postgres-data:
+  prometheus-data:
+
+configs:
+  prometheus-config:
+    file: ./docker/prometheus.yml
