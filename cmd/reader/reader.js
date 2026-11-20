@@ -339,17 +339,27 @@
     });
   }
 
-  const nextPageObserver = new IntersectionObserver(entries => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) void loadNextPage(entry.target);
-    }
-  });
+  const narrowWorkspace = matchMedia("(max-width: 600px)");
+  let nextPageObserver;
 
   function observeNextPage() {
-    nextPageObserver.disconnect();
-    const link = document.querySelector("[data-next-articles]");
-    if (link) nextPageObserver.observe(link);
+    nextPageObserver?.disconnect();
+    const list = document.querySelector("#list-pane");
+    const link = list.querySelector("[data-next-articles]");
+    if (!link) return;
+    nextPageObserver = new IntersectionObserver((entries, observer) => {
+      if (observer !== nextPageObserver) return;
+      for (const entry of entries) {
+        if (entry.isIntersecting) void loadNextPage(entry.target);
+      }
+    }, {
+      root: narrowWorkspace.matches ? null : list,
+      rootMargin: "0px 0px 320px 0px",
+    });
+    nextPageObserver.observe(link);
   }
+
+  narrowWorkspace.addEventListener("change", observeNextPage);
 
   async function appendNextPage(link) {
     const footer = link.closest(".auto-paging");
@@ -404,12 +414,16 @@
     if (pageMovePending || favoritePending) return;
     pageMovePending = true;
     try {
+      const list = document.querySelector("#list-pane");
       let rows = articleRows();
       const index = rows.findIndex(row => row.dataset.articleId === keyboardCursorID);
       const next = index < 0 ? 0 : index + delta;
+      const nextPage = list.querySelector("[data-next-articles]");
+      const preload = next >= 0 && rows.length - next <= 5
+        ? loadNextPage(nextPage)
+        : undefined;
       if (!rows[next] && delta > 0) {
-        const list = document.querySelector("#list-pane");
-        await loadNextPage(list.querySelector("[data-next-articles]"));
+        await preload;
         if (!list.isConnected) return;
         rows = articleRows();
       }
