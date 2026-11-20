@@ -186,17 +186,19 @@
 
   function scheduleContentCheck() {
     clearTimeout(contentPollTimer);
-    const reader = document.querySelector('.reader[data-content-pending="true"]');
+    const reader = document.querySelector(".reader[data-reading-id]");
     if (!reader) {
       contentRequestedFor = "";
       return;
     }
     const id = reader.dataset.readingId;
     const requestNow = contentRequestedFor !== id;
-    contentRequestedFor = id;
+    const fetched = reader.dataset.contentFetched === "true";
+    if (!requestNow && fetched) return;
     const hadError = reader.dataset.contentError === "true";
     const generation = navigationGeneration;
-    contentPollTimer = setTimeout(async () => {
+
+    async function checkContent() {
       try {
         const response = await fetch(`/articles/${id}/content-status`, {
           method: requestNow ? "POST" : "GET",
@@ -204,18 +206,24 @@
           headers: { Accept: "application/json" },
         });
         if (generation !== navigationGeneration || selectedID() !== id) return;
-        if (!response.ok) { scheduleContentCheck(); return; }
+        if (!response.ok) throw new Error();
         const status = await response.json();
         if (generation !== navigationGeneration || selectedID() !== id) return;
-        if (!status.pending || Boolean(status.error) !== hadError) {
+        contentRequestedFor = id;
+        if ((!status.pending && !fetched) || Boolean(status.error) !== hadError) {
           await navigate(location.href, { history: "none", keepReaderScroll: true });
         } else {
           scheduleContentCheck();
         }
       } catch {
-        if (generation === navigationGeneration && selectedID() === id) scheduleContentCheck();
+        if (generation === navigationGeneration && selectedID() === id) {
+          contentPollTimer = setTimeout(scheduleContentCheck, 5000);
+        }
       }
-    }, requestNow ? 0 : hadError ? 30000 : 5000);
+    }
+
+    if (requestNow) void checkContent();
+    else contentPollTimer = setTimeout(checkContent, hadError ? 30000 : 5000);
   }
 
   function isFavoritesView(params) {

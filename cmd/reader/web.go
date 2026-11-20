@@ -555,7 +555,7 @@ func (a *application) contentStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodPost {
-		item, err := a.articles.Get(r.Context(), n)
+		item, err := a.articles.RecordDisplay(r.Context(), n)
 		if err != nil {
 			fail(w, err)
 			return

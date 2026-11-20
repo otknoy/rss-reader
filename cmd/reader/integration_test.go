@@ -339,17 +339,25 @@ func TestPrototypeIntegration(t *testing.T) {
 	if w := request("GET", fmt.Sprintf("/articles/%d", articleID), nil); w.Code != http.StatusNotFound {
 		t.Fatalf("deleted article status: %d", w.Code)
 	}
-	t.Run("durable automatic full content", func(t *testing.T) {
+	t.Run("full content on article display", func(t *testing.T) {
 		manual, err := as.Search(ctx, articles.Query{Text: "手動登録記事"})
 		if err != nil || manual.Total != 1 {
 			t.Fatalf("manual article missing: %+v %v", manual, err)
 		}
 		manualItem := manual.Items[0]
-		if status, err := as.FullContentStatus(ctx, manualItem.ID); err != nil || !status.Pending {
-			t.Fatalf("manual registration was not queued: %+v %v", status, err)
+		if status, err := as.FullContentStatus(ctx, manualItem.ID); err != nil || status.Pending {
+			t.Fatalf("manual registration unexpectedly queued: %+v %v", status, err)
 		}
 		if err := as.SaveFullContent(ctx, manualItem.ID, articles.FullContent{HTML: "<p>手動登録記事の本文</p>", Text: "手動登録記事の本文", URL: manualItem.URL}); err != nil {
 			t.Fatal(err)
+		}
+		manualContentURL := fmt.Sprintf("/articles/%d/content-status", manualItem.ID)
+		if w := request("POST", manualContentURL, nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
+			t.Fatalf("already fetched article was queued on first display: %d %s", w.Code, w.Body.String())
+		}
+		var manualOpenedAt *time.Time
+		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, manualItem.ID).Scan(&manualOpenedAt); err != nil || manualOpenedAt == nil {
+			t.Fatalf("display of already fetched article was not recorded: %v %v", manualOpenedAt, err)
 		}
 		queued := articles.Article{SourceID: 999, ExternalID: "queue-one", URL: "https://example.com/queue-one", Title: "取得待ちのテスト", BodyText: "RSSの要約"}
 		if err := as.Save(ctx, queued); err != nil {
@@ -361,10 +369,27 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 		queuedID := matching.Items[0].ID
 		freshStore := articles.New(connect(os.Getenv("ARTICLES_DATABASE_URL")))
-		status, err := freshStore.FullContentStatus(ctx, queuedID)
-		if err != nil || !status.Pending {
-			t.Fatalf("pending state was not persisted: %+v %v", status, err)
+		if err := as.MarkRead(ctx, []int64{queuedID}); err != nil {
+			t.Fatal(err)
 		}
+		if w := request("GET", fmt.Sprintf("/articles/%d", queuedID), nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "RSSの要約") {
+			t.Fatalf("direct article did not show its RSS summary: %d %s", w.Code, w.Body.String())
+		}
+		var openedAt *time.Time
+		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&openedAt); err != nil || openedAt != nil {
+			t.Fatalf("read or GET changed first display: %v %v", openedAt, err)
+		}
+		contentURL := fmt.Sprintf("/articles/%d/content-status", queuedID)
+		if w := request("GET", contentURL, nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
+			t.Fatalf("undisplayed article was queued: %d %s", w.Code, w.Body.String())
+		}
+		if item, err := as.RecordDisplay(ctx, queuedID); err != nil || !item.FullContentPending {
+			t.Fatalf("display did not schedule extraction: %+v %v", item, err)
+		}
+		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&openedAt); err != nil || openedAt == nil {
+			t.Fatalf("first display was not recorded: %v %v", openedAt, err)
+		}
+
 		if err := as.Save(ctx, queued); err != nil {
 			t.Fatal(err)
 		}
@@ -406,12 +431,19 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err := as.Save(ctx, queued); err != nil {
 			t.Fatal(err)
 		}
-		status, err = as.FullContentStatus(ctx, queuedID)
+		status, err := as.FullContentStatus(ctx, queuedID)
 		if err != nil || status.Pending || status.Error != "" {
 			t.Fatalf("completed article was requeued: %+v %v", status, err)
 		}
 		if w := request("GET", fmt.Sprintf("/articles/%d/content-status", queuedID), nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
 			t.Fatalf("content status endpoint: %d %s", w.Code, w.Body.String())
+		}
+		if w := request("POST", contentURL, nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
+			t.Fatalf("display of fetched article requeued it: %d %s", w.Code, w.Body.String())
+		}
+		var reopenedAt time.Time
+		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&reopenedAt); err != nil || !reopenedAt.Equal(*openedAt) {
+			t.Fatalf("reopening changed first display: %v %v", reopenedAt, err)
 		}
 		for i := 0; i < 12; i++ {
 			a := articles.Article{SourceID: 999, ExternalID: fmt.Sprintf("queue-batch-%d", i), URL: fmt.Sprintf("https://example.com/batch/%d", i), Title: "batch"}
@@ -419,6 +451,10 @@ func TestPrototypeIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries SET first_opened_at=now(),full_next_fetch_at=now() WHERE source_id=999 AND title='batch'`); err != nil {
+			t.Fatal(err)
+		}
+
 		jobs, err := as.PendingFullContent(ctx)
 		if err != nil || len(jobs) != 10 {
 			t.Fatalf("unbounded or missing batch: %d %v", len(jobs), err)
@@ -432,72 +468,22 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err != nil || len(jobs) != 2 {
 			t.Fatalf("deleted jobs were processed or remaining jobs lost: %d %v", len(jobs), err)
 		}
-		// Existing articles are queued by the migration, not by every repeated RSS update.
-		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries SET full_next_fetch_at=NULL WHERE id=$1`, jobs[0].ID); err != nil {
-			t.Fatal(err)
-		}
-		if err := as.Save(ctx, jobs[0]); err != nil {
-			t.Fatal(err)
-		}
-		if status, err := as.FullContentStatus(ctx, jobs[0].ID); err != nil || status.Pending {
-			t.Fatalf("old article was unexpectedly backfilled: %+v %v", status, err)
-		}
-		oldManual := articles.Article{URL: "https://example.com/old-manual", Title: "移行前の手動登録"}
-		if err := as.Save(ctx, oldManual); err != nil {
-			t.Fatal(err)
-		}
-		oldManualResult, err := as.Search(ctx, articles.Query{Text: oldManual.Title})
-		if err != nil || oldManualResult.Total != 1 {
-			t.Fatalf("legacy manual fixture: %v %v", oldManualResult, err)
-		}
-		oldManualID := oldManualResult.Items[0].ID
-		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries SET full_next_fetch_at=NULL WHERE id=$1`, oldManualID); err != nil {
-			t.Fatal(err)
-		}
-		if claimed, err := as.ClaimFullContent(ctx, jobs[1].ID); err != nil || !claimed {
+		retryID := jobs[0].ID
+		if claimed, err := as.ClaimFullContent(ctx, retryID); err != nil || !claimed {
 			t.Fatalf("retry fixture claim: %v %v", claimed, err)
 		}
-		if err := as.FailFullContent(ctx, jobs[1].ID, errors.New("retry later")); err != nil {
+		if err := as.FailFullContent(ctx, retryID, errors.New("retry later")); err != nil {
 			t.Fatal(err)
 		}
 		var retryBefore, retryAfter time.Time
-		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, jobs[1].ID).Scan(&retryBefore); err != nil {
+		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, retryID).Scan(&retryBefore); err != nil {
 			t.Fatal(err)
 		}
-		var deletedID int64
-		if err := owner.QueryRowContext(ctx, `SELECT id FROM articles.entries WHERE deleted_at IS NOT NULL AND full_fetched_at IS NULL LIMIT 1`).Scan(&deletedID); err != nil {
-			t.Fatal(err)
+		if w := request("POST", fmt.Sprintf("/articles/%d/content-status", retryID), nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":true`) {
+			t.Fatalf("display during backoff: %d %s", w.Code, w.Body.String())
 		}
-		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries SET full_next_fetch_at=NULL WHERE id=$1`, deletedID); err != nil {
-			t.Fatal(err)
-		}
-		// Replay only the backfill migration against representative pre-migration rows.
-		if _, err := owner.ExecContext(ctx, `DELETE FROM public.schema_migrations WHERE name='006_backfill_article_content.sql'`); err != nil {
-			t.Fatal(err)
-		}
-		if err := migrations.Run(ctx, owner); err != nil {
-			t.Fatal(err)
-		}
-		for _, id := range []int64{jobs[0].ID, oldManualID} {
-			if status, err := as.FullContentStatus(ctx, id); err != nil || !status.Pending {
-				t.Fatalf("legacy article %d not queued: %+v %v", id, status, err)
-			}
-		}
-		if status, err := as.FullContentStatus(ctx, queuedID); err != nil || status.Pending {
-			t.Fatalf("completed full content was requeued: %+v %v", status, err)
-		}
-		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, jobs[1].ID).Scan(&retryAfter); err != nil {
-			t.Fatal(err)
-		}
-		if !retryBefore.Equal(retryAfter) {
-			t.Fatal("backfill changed an existing retry schedule")
-		}
-		var deletedStillExcluded bool
-		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at IS NULL FROM articles.entries WHERE id=$1`, deletedID).Scan(&deletedStillExcluded); err != nil {
-			t.Fatal(err)
-		}
-		if !deletedStillExcluded {
-			t.Fatal("deleted article was queued by backfill")
+		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, retryID).Scan(&retryAfter); err != nil || !retryBefore.Equal(retryAfter) {
+			t.Fatalf("reopening changed an existing retry schedule: %v %v", retryAfter, err)
 		}
 	})
 	t.Run("OPML import export and atomic merge", func(t *testing.T) {

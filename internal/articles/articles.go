@@ -69,7 +69,7 @@ func (s *Store) Save(ctx context.Context, a Article) error {
 	if !hasPublished {
 		a.PublishedAt = time.Now()
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO articles.entries(source_id,external_id,source_name,url,title,body_text,body_html,published_at,full_next_fetch_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()) ON CONFLICT(source_id,external_id) DO UPDATE SET source_name=EXCLUDED.source_name,url=EXCLUDED.url,title=EXCLUDED.title,body_text=EXCLUDED.body_text,body_html=EXCLUDED.body_html,published_at=CASE WHEN $9 THEN EXCLUDED.published_at ELSE entries.published_at END,deleted_at=CASE WHEN EXCLUDED.source_id=0 THEN NULL ELSE entries.deleted_at END`, a.SourceID, a.ExternalID, a.SourceName, a.URL, a.Title, a.BodyText, a.BodyHTML, a.PublishedAt, hasPublished)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO articles.entries(source_id,external_id,source_name,url,title,body_text,body_html,published_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(source_id,external_id) DO UPDATE SET source_name=EXCLUDED.source_name,url=EXCLUDED.url,title=EXCLUDED.title,body_text=EXCLUDED.body_text,body_html=EXCLUDED.body_html,published_at=CASE WHEN $9 THEN EXCLUDED.published_at ELSE entries.published_at END,deleted_at=CASE WHEN EXCLUDED.source_id=0 THEN NULL ELSE entries.deleted_at END`, a.SourceID, a.ExternalID, a.SourceName, a.URL, a.Title, a.BodyText, a.BodyHTML, a.PublishedAt, hasPublished)
 	return err
 }
 
@@ -232,6 +232,16 @@ func (s *Store) SaveFullContent(ctx context.Context, id int64, content FullConte
  title=CASE WHEN title=url AND $5<>'' THEN $5 ELSE title END
  WHERE id=$1 AND deleted_at IS NULL`, id, content.HTML, content.Text, content.URL, content.Title)
 	return affected(result, err)
+}
+
+// RecordDisplay records the first display and schedules extraction if needed.
+func (s *Store) RecordDisplay(ctx context.Context, id int64) (item Article, err error) {
+	err = s.db.QueryRowContext(ctx, `UPDATE articles.entries SET
+ first_opened_at=COALESCE(first_opened_at, now()),
+ full_next_fetch_at=CASE WHEN full_fetched_at IS NULL THEN COALESCE(full_next_fetch_at, now()) END
+ WHERE id=$1 AND deleted_at IS NULL
+ RETURNING id,url,(full_next_fetch_at IS NOT NULL)`, id).Scan(&item.ID, &item.URL, &item.FullContentPending)
+	return item, err
 }
 
 // PendingFullContent returns one bounded batch of articles awaiting extraction.
