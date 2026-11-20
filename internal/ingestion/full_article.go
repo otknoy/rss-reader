@@ -37,13 +37,14 @@ func (s *Service) FetchArticle(ctx context.Context, rawURL string) (content arti
 	if resp.StatusCode != http.StatusOK {
 		return content, fmt.Errorf("article HTTP %d", resp.StatusCode)
 	}
-	const maxArticleBytes = 4 << 20
+	const maxArticleMiB = 16
+	const maxArticleBytes = maxArticleMiB << 20
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxArticleBytes+1))
 	if err != nil {
 		return content, err
 	}
 	if len(raw) > maxArticleBytes {
-		return content, errors.New("記事が4MBを超えています")
+		return content, fmt.Errorf("記事が%d MiBを超えています", maxArticleMiB)
 	}
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {

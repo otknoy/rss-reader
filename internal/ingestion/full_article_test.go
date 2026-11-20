@@ -11,6 +11,7 @@ import (
 func TestFetchFullArticle(t *testing.T) {
 	paragraph := strings.Repeat("これは本文のテストです。全文専用検索語と画像を含む記事を保存します。", 25)
 	fixture := `<!doctype html><html lang="ja"><head><title>全文のテスト</title></head><body><nav>メニュー</nav><main><article><h1>全文のテスト</h1><p>` + paragraph + `</p><h2>写真と説明</h2><figure><img src="/images/photo.jpg"><figcaption>写真の説明</figcaption></figure><p>` + paragraph + `</p></article></main><script>alert(1)</script></body></html>`
+	fixture += "<!--" + strings.Repeat("x", (16<<20)-len(fixture)-len("<!---->")) + "-->"
 	service := New(nil, nil, DefaultInterval)
 	service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 		if req.Header.Get("Accept") == "" {
@@ -36,15 +37,19 @@ func TestFetchArticleRejectsFailures(t *testing.T) {
 		{"HTTP failure", 403, "text/html", "denied"},
 		{"image instead of article", 200, "image/png", "not html"},
 		{"empty page", 200, "text/html", "<html><body></body></html>"},
-		{"oversized response", 200, "text/html", strings.Repeat("x", (4<<20)+1)},
+		{"oversized response", 200, "text/html", strings.Repeat("x", (16<<20)+1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service := New(nil, nil, DefaultInterval)
 			service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: tc.status, Header: http.Header{"Content-Type": {tc.contentType}}, Body: io.NopCloser(strings.NewReader(tc.body)), Request: req}, nil
 			})}
-			if _, err := service.FetchArticle(context.Background(), "https://example.com/article"); err == nil {
+			_, err := service.FetchArticle(context.Background(), "https://example.com/article")
+			if err == nil {
 				t.Fatal("expected extraction failure")
+			}
+			if tc.name == "oversized response" && err.Error() != "記事が16 MiBを超えています" {
+				t.Fatalf("expected size-limit error, got %v", err)
 			}
 		})
 	}
