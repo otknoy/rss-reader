@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
@@ -736,10 +737,20 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("unread next link did not use the last article as its anchor: %d", firstPage.Code)
 		}
 		// Reading every visible row must not skip the remaining unread row on the next page.
+		form := url.Values{"return_to": {unread}}
 		for _, item := range fixture.Items {
-			if err := as.SetState(ctx, item.ID, "read", true); err != nil {
-				t.Fatal(err)
-			}
+			form.Add("id", fmt.Sprint(item.ID))
+		}
+		if w := request("POST", "/articles/mark-read", nil); w.Code != http.StatusBadRequest {
+			t.Fatalf("empty bulk read returned %d", w.Code)
+		}
+		if w := request("POST", "/articles/mark-read", form); w.Code != http.StatusSeeOther {
+			t.Fatalf("bulk read returned %d: %s", w.Code, w.Body.String())
+		}
+		if w := request("GET", unread, nil); w.Code != http.StatusOK ||
+			strings.Count(w.Body.String(), "data-article-id=") != 1 ||
+			!strings.Contains(w.Body.String(), "data-mark-loaded-read") {
+			t.Fatalf("unread view should contain one remaining article and the bulk read button: %d", w.Code)
 		}
 		nextUnread := request("GET", fmt.Sprintf("%s&after=%d", unread, boundary), nil)
 		if nextUnread.Code != http.StatusOK || !strings.Contains(nextUnread.Body.String(), ">sort-fixture-21</a>") {
@@ -751,4 +762,38 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("bulk read leaves articles added after rendering unread", func(t *testing.T) {
+		const path = "/?q=bulk-read-snapshot&view=unread"
+		saveArticle := func(label string) {
+			t.Helper()
+			if err := as.Save(ctx, articles.Article{
+				Title: "bulk-read-snapshot " + label,
+				URL:   "https://example.org/bulk-read-snapshot/" + label,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		saveArticle("first")
+		saveArticle("second")
+		before := request("GET", path, nil)
+		if before.Code != http.StatusOK {
+			t.Fatalf("load initial view: %d", before.Code)
+		}
+		matches := regexp.MustCompile(`data-article-id="([0-9]+)"`).FindAllStringSubmatch(before.Body.String(), -1)
+		if len(matches) != 2 || strings.Contains(before.Body.String(), "data-next-articles") {
+			t.Fatal("expected exactly two articles and no next page in the initial view")
+		}
+
+		saveArticle("new-arrival")
+		form := url.Values{"return_to": {path}, "id": {matches[0][1], matches[1][1]}}
+		if w := request("POST", "/articles/mark-read", form); w.Code != http.StatusSeeOther {
+			t.Fatalf("bulk read returned %d: %s", w.Code, w.Body.String())
+		}
+		after := request("GET", path, nil)
+		if after.Code != http.StatusOK ||
+			strings.Count(after.Body.String(), "data-article-id=") != 1 ||
+			!strings.Contains(after.Body.String(), ">bulk-read-snapshot new-arrival</a>") {
+			t.Fatalf("expected only the newly added article to remain unread: %d", after.Code)
+		}
+	})
 }

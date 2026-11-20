@@ -109,14 +109,20 @@
 
       const filter = new URL(response.url).searchParams.get("view");
       const keepArticleList = sameContext && filter !== "read" &&
-        (change?.kind === "read" || change?.kind === "favorite");
+        (options.markedReadIDs || change?.kind === "read" || change?.kind === "favorite");
       const refreshWorkspace = !sameContext || options.refreshList;
       if (keepArticleList) {
-        const row = articleRows().find(item => item.dataset.articleId === change.id);
-        if (row && change.kind === "read") updateReadRow(row, change.value === "true");
-        if (row && change.kind === "favorite") {
-          if (change.value === "true") updateFavoriteButton(row, true);
-          else row.remove();
+        if (options.markedReadIDs) {
+          for (const row of articleRows()) {
+            if (options.markedReadIDs.has(row.dataset.articleId)) updateReadRow(row, true);
+          }
+        } else {
+          const row = articleRows().find(item => item.dataset.articleId === change.id);
+          if (row && change.kind === "read") updateReadRow(row, change.value === "true");
+          if (row && change.kind === "favorite") {
+            if (change.value === "true") updateFavoriteButton(row, true);
+            else row.remove();
+          }
         }
         oldList.querySelector(".results .muted").textContent = nextList.querySelector(".results .muted").textContent;
       } else if (refreshWorkspace) {
@@ -241,6 +247,35 @@
 
   function articleRows() {
     return Array.from(document.querySelectorAll("#list-pane [data-article-id]"));
+  }
+
+  async function markLoadedRead(button) {
+    if (pageMovePending || favoritePending || button.disabled) return;
+    const ids = new Set(articleRows().filter(row => !row.classList.contains("read")).map(row => row.dataset.articleId));
+    const status = button.parentElement.querySelector("[data-bulk-read-status]");
+    if (!ids.size) {
+      status.textContent = "読み込んだ記事はすべて既読です。";
+      return;
+    }
+    const body = new URLSearchParams({ return_to: location.pathname + location.search });
+    for (const id of ids) body.append("id", id);
+    button.disabled = true;
+    pageMovePending = true;
+    status.textContent = "既読にしています…";
+    try {
+      const saved = await navigate("/articles/mark-read", {
+        method: "POST",
+        body,
+        markedReadIDs: ids,
+        history: "replace",
+        refreshList: true,
+        keepReaderScroll: true,
+      });
+      status.textContent = saved ? "読み込んだ記事をすべて既読にしました。" : "";
+    } finally {
+      button.disabled = false;
+      pageMovePending = false;
+    }
   }
 
   function scrollToCursor(rows, index) {
@@ -580,6 +615,11 @@
   }, true);
 
   document.addEventListener("click", async (event) => {
+    const markRead = event.target.closest("[data-mark-loaded-read]");
+    if (markRead) {
+      await markLoadedRead(markRead);
+      return;
+    }
     const nextPage = event.target.closest("[data-next-articles]");
     if (nextPage && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
       event.preventDefault();

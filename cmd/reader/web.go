@@ -87,6 +87,7 @@ func (a *application) routes() http.Handler {
 	mux.HandleFunc("POST /feeds/{id}/remove", a.removeFeed)
 	mux.HandleFunc("POST /refresh", a.refresh)
 	mux.HandleFunc("POST /articles", a.addArticle)
+	mux.HandleFunc("POST /articles/mark-read", a.markRead)
 	mux.HandleFunc("POST /articles/{id}/state", a.state)
 	mux.HandleFunc("POST /articles/{id}/open", a.openArticle)
 	mux.HandleFunc("GET /articles/{id}/content-status", a.contentStatus)
@@ -500,6 +501,28 @@ func (a *application) state(w http.ResponseWriter, r *http.Request) {
 		err = a.articles.SetState(r.Context(), n, kind, value == "true")
 	}
 	if err != nil {
+		fail(w, err)
+		return
+	}
+	redirect(w, r, "")
+}
+
+func (a *application) markRead(w http.ResponseWriter, r *http.Request) {
+	values := r.PostForm["id"]
+	if len(values) == 0 {
+		http.Error(w, "記事を指定してください", http.StatusBadRequest)
+		return
+	}
+	ids := make([]int64, len(values))
+	for i, value := range values {
+		n, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || n < 1 {
+			http.Error(w, "記事の指定が不正です", http.StatusBadRequest)
+			return
+		}
+		ids[i] = n
+	}
+	if err := a.articles.MarkRead(r.Context(), ids); err != nil {
 		fail(w, err)
 		return
 	}

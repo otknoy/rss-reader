@@ -146,6 +146,8 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .favorite { color: #e6c677; }
 .empty { padding: 48px 0; text-align: center; color: var(--muted); }
 .auto-paging { margin-top: 24px; text-align: center; }
+.bulk-read { margin-top: 24px; text-align: center; }
+.auto-paging + .bulk-read { display: none; }
 .reader { max-width: 720px; margin: 24px auto; }
 .reader h1 { font-size: 26px; line-height: 1.65; margin: 14px 0 20px; overflow-wrap: anywhere; }
 .body { overflow-wrap: anywhere; line-height: 1.95; margin-top: 32px; font-size: 16px; }
@@ -345,6 +347,12 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   {{if .Next}}
   <div class="auto-paging">
     <a class="button" data-next-articles href="{{.Next}}">さらに読み込む</a>
+  </div>
+  {{end}}
+  {{if and .Result.Items (ne .Filter "read")}}
+  <div class="bulk-read">
+    <button type="button" data-mark-loaded-read>読み込んだ記事をすべて既読にする</button>
+    <span data-bulk-read-status class="muted" role="status"></span>
   </div>
   {{end}}
   <span id="keyboard-status" class="visually-hidden" role="status" aria-atomic="true"></span>

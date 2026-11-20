@@ -113,6 +113,13 @@ func (s *Store) SetState(ctx context.Context, id int64, kind string, value bool)
 	return affected(result, err)
 }
 
+// MarkRead marks the specified non-deleted articles as read in one update.
+func (s *Store) MarkRead(ctx context.Context, ids []int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET is_read=true
+		WHERE id=ANY($1::bigint[]) AND deleted_at IS NULL AND NOT is_read`, ids)
+	return err
+}
+
 func affected(result sql.Result, err error) error {
 	if err != nil {
 		return err
