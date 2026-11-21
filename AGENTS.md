@@ -22,6 +22,13 @@ docker compose --profile test run --build --rm test
 - 自動取得は `AUTO_REFRESH`、基本間隔は `FETCH_INTERVAL` で設定する。取得間隔は基本値とフィードのTTLの長い方を使う。定期実行と1回分の処理を分け、Webと `reader fetch --due` で共有する。
 - 開発用の設定例は `.env.example`。実際の `.env`、認証情報、DBダンプ、個人の購読OPMLをGitに追加しない。DBの初期パスワード設定は空のボリュームに対して実行される。
 
+## Kubernetes へのデプロイ
+
+- Docker Compose はローカル開発・検証に使う。開発した変更は検証後、Kubernetes の `rss-reader` 名前空間にデプロイする。
+- `make publish` でイメージを GHCR に登録し、`k8s/reader/` のイメージタグを更新する。デプロイ後はロールアウトの完了と `/healthz`、変更した機能の動作を確認する。
+- DB のスキーマを変更した場合は、既存データでの動作と稼働中の Web との互換性を検証し、Kubernetes の `reader` DB をバックアップして復元手順を確認する。稼働中の Web と互換性がない場合は、先に書き込み元を停止する。
+- 新しいスキーマは `reader migrate` の Job で適用する。Job の成功を確認してから新しい Web を起動する。
+
 ## 変更時に守る挙動
 
 - 購読解除後も記事を保持し、フィード再取得で既読・お気に入り・取得済み全文を上書きしない。OPMLの取り込みは一括で反映する。
