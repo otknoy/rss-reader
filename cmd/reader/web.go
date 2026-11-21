@@ -172,6 +172,15 @@ func id(r *http.Request) (int64, error) {
 	return n, nil
 }
 
+func listFilter(value string) string {
+	switch value {
+	case "all", "unread", "read", "favorites", "unread-favorites", "history":
+		return value
+	default:
+		return "unread"
+	}
+}
+
 func (a *application) base(r *http.Request) (view, error) {
 	list, err := a.feeds.List(r.Context())
 	if err != nil {
@@ -183,12 +192,7 @@ func (a *application) base(r *http.Request) (view, error) {
 		feedID = 0
 	}
 	p, _ := strconv.Atoi(q.Get("page"))
-	filter := q.Get("view")
-	switch filter {
-	case "all", "unread", "read", "favorites", "unread-favorites", "history":
-	default:
-		filter = "unread"
-	}
+	filter := listFilter(q.Get("view"))
 	queryFilter := filter
 	if filter == "all" {
 		queryFilter = ""
