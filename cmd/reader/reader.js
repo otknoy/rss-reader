@@ -12,22 +12,6 @@
   let favoritePending = false;
   let nextPageRequest;
 
-  const pendingFolderStates = new Map();
-  let folderOrderPending = false;
-
-  async function saveFolderOrder(ids) {
-    folderOrderPending = true;
-    try {
-      const body = new URLSearchParams({ return_to: location.pathname + location.search });
-      for (const id of ids) body.append("folder", id);
-      return await navigate("/folders/order", {
-        method: "POST", body, history: "replace", refreshList: true, keepReaderScroll: true,
-      });
-    } finally {
-      folderOrderPending = false;
-    }
-  }
-
   function contextKey(raw) {
     const url = new URL(raw, location.href);
     for (const key of ["article", "message", "added", "existing", "skipped"]) url.searchParams.delete(key);
@@ -60,7 +44,7 @@
     document.querySelector("#reader-pane")?.setAttribute("aria-busy", "true");
 
     try {
-      await Promise.all([...pendingFolderStates.values()].map(state => state.done));
+      await folders.waitForSaves();
       if (controller.signal.aborted) return;
       const response = await fetch(url, {
         method: options.method || "GET",
@@ -133,7 +117,7 @@
       if (refreshWorkspace) {
         const sidebar = document.querySelector(".sidebar");
         const sidebarScroll = sidebar.scrollTop;
-        restoreFolders(nextSidebar);
+        folders.restoreFolders(nextSidebar);
         const manager = sidebar.querySelector(".subscription-manager[open]");
         const managerScroll = manager?.scrollTop;
         const paneScroll = new Map(Array.from(manager?.querySelectorAll("[data-manager-pane]") || [],
@@ -590,51 +574,147 @@
     }
   });
 
-  function restoreFolders(sidebar) {
-    const folders = sidebar.querySelectorAll(".folder-board > [data-sortable-folder]");
-    folders.forEach((folder, index) => {
-      for (const button of folder.querySelectorAll("[data-folder-step]")) {
-        button.disabled = button.dataset.folderStep === "-1" ? index === 0 : index === folders.length - 1;
-      }
-    });
-    for (const folder of sidebar.querySelectorAll("[data-sidebar-folder]")) {
-      const pendingState = pendingFolderStates.get(folder.dataset.sidebarFolder);
-      if (pendingState) folder.open = pendingState.open;
-    }
-  }
+  const folders = (() => {
+    const pendingFolderStates = new Map();
+    let folderOrderPending = false;
 
-  async function saveFolderState(id, state) {
-    try {
-      const response = await fetch(`/folders/open/${id}`, {
-        method: "POST",
-        body: new URLSearchParams({ open: String(state.open) }),
-        keepalive: true,
+    async function saveFolderOrder(ids) {
+      folderOrderPending = true;
+      try {
+        const body = new URLSearchParams({ return_to: location.pathname + location.search });
+        for (const id of ids) body.append("folder", id);
+        return await navigate("/folders/order", {
+          method: "POST", body, history: "replace", refreshList: true, keepReaderScroll: true,
+        });
+      } finally {
+        folderOrderPending = false;
+      }
+    }
+
+    function waitForSaves() {
+      return Promise.all([...pendingFolderStates.values()].map(state => state.done));
+    }
+
+    async function moveOrder(orderButton) {
+      if (folderOrderPending) return;
+      const folder = orderButton.closest("[data-sortable-folder]");
+      const folders = [...folder.parentElement.querySelectorAll(":scope > [data-sortable-folder]")];
+      const from = folders.indexOf(folder);
+      const to = from + Number(orderButton.dataset.folderStep);
+      if (!folders[to]) return;
+      [folders[from], folders[to]] = [folders[to], folders[from]];
+      const saved = await saveFolderOrder(folders.map(item => item.dataset.sortableFolder));
+      if (saved) {
+        const current = document.querySelector(`.subscription-manager[open] .folder-board > [data-sortable-folder="${folder.dataset.sortableFolder}"]`);
+        const button = current?.querySelector(`[data-folder-step="${orderButton.dataset.folderStep}"]:not(:disabled)`);
+        (button || current?.querySelector("[data-folder-step]:not(:disabled)"))?.focus();
+      }
+    }
+
+    function restoreFolders(sidebar) {
+      const folders = sidebar.querySelectorAll(".folder-board > [data-sortable-folder]");
+      folders.forEach((folder, index) => {
+        for (const button of folder.querySelectorAll("[data-folder-step]")) {
+          button.disabled = button.dataset.folderStep === "-1" ? index === 0 : index === folders.length - 1;
+        }
       });
-      if (!response.ok) throw new Error("保存に失敗しました");
-    } catch {
-      showError("フォルダーの開閉状態を保存できませんでした。");
-    } finally {
-      if (pendingFolderStates.get(id) === state) {
-        pendingFolderStates.delete(id);
+      for (const folder of sidebar.querySelectorAll("[data-sidebar-folder]")) {
+        const pendingState = pendingFolderStates.get(folder.dataset.sidebarFolder);
+        if (pendingState) folder.open = pendingState.open;
       }
     }
-  }
 
-  // Persist only user toggles, not native toggle events from rendering HTML.
-  document.addEventListener("click", event => {
-    const summary = event.target.closest("details[data-sidebar-folder] > summary");
-    if (!summary || event.target.closest("a") || event.defaultPrevented) return;
-    event.preventDefault();
-    const folder = summary.parentElement;
-    const id = folder.dataset.sidebarFolder;
-    folder.open = !folder.open;
-    const previous = pendingFolderStates.get(id);
-    const state = { open: folder.open };
-    pendingFolderStates.set(id, state);
-    state.done = previous
-      ? previous.done.then(() => saveFolderState(id, state))
-      : saveFolderState(id, state);
-  });
+    async function saveFolderState(id, state) {
+      try {
+        const response = await fetch(`/folders/open/${id}`, {
+          method: "POST",
+          body: new URLSearchParams({ open: String(state.open) }),
+          keepalive: true,
+        });
+        if (!response.ok) throw new Error("保存に失敗しました");
+      } catch {
+        showError("フォルダーの開閉状態を保存できませんでした。");
+      } finally {
+        if (pendingFolderStates.get(id) === state) {
+          pendingFolderStates.delete(id);
+        }
+      }
+    }
+
+    // Persist only user toggles, not native toggle events from rendering HTML.
+    document.addEventListener("click", event => {
+      const summary = event.target.closest("details[data-sidebar-folder] > summary");
+      if (!summary || event.target.closest("a") || event.defaultPrevented) return;
+      event.preventDefault();
+      const folder = summary.parentElement;
+      const id = folder.dataset.sidebarFolder;
+      folder.open = !folder.open;
+      const previous = pendingFolderStates.get(id);
+      const state = { open: folder.open };
+      pendingFolderStates.set(id, state);
+      state.done = previous
+        ? previous.done.then(() => saveFolderState(id, state))
+        : saveFolderState(id, state);
+    });
+
+    let draggedFeed = null;
+    let dropTarget = null;
+
+    function highlightDropTarget(target) {
+      dropTarget?.classList.remove("drop-target");
+      dropTarget = target;
+      dropTarget?.classList.add("drop-target");
+    }
+
+    document.addEventListener("dragstart", event => {
+      const link = event.target.closest("[data-feed-drag]");
+      if (!link) return;
+      draggedFeed = link;
+      link.classList.add("dragging");
+      event.dataTransfer.setData("text/plain", link.textContent.trim());
+      event.dataTransfer.effectAllowed = "move";
+    });
+
+    document.addEventListener("dragover", event => {
+      if (!draggedFeed) return;
+      const target = event.target.closest("[data-folder-drop]");
+      highlightDropTarget(target);
+      if (!target) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    });
+
+    document.addEventListener("dragend", () => {
+      draggedFeed?.classList.remove("dragging");
+      draggedFeed = null;
+      highlightDropTarget(null);
+    });
+
+    document.addEventListener("drop", event => {
+      if (!draggedFeed) return;
+      const target = event.target.closest("[data-folder-drop]");
+      const source = draggedFeed;
+      source.classList.remove("dragging");
+      draggedFeed = null;
+      highlightDropTarget(null);
+      if (!target) return;
+      event.preventDefault();
+      const originalFolder = source.closest(".folder-card") || source.closest("details")?.querySelector("[data-folder-drop]");
+      if (originalFolder?.dataset.folderDrop === target.dataset.folderDrop) return;
+      void navigate(`/folders/move/${source.dataset.feedDrag}`, {
+        method: "POST",
+        body: new URLSearchParams({
+          folder: target.dataset.folderDrop,
+          return_to: location.pathname + location.search,
+        }),
+        history: "replace",
+        refreshList: true,
+        keepReaderScroll: true,
+      });
+    });
+
+    return { restoreFolders, waitForSaves, moveOrder };
+  })();
 
   document.addEventListener("close", event => {
     if (event.target.matches?.(".subscription-manager") && event.target.isConnected) {
@@ -660,19 +740,7 @@
     }
     const orderButton = event.target.closest("[data-folder-step]");
     if (orderButton) {
-      if (folderOrderPending) return;
-      const folder = orderButton.closest("[data-sortable-folder]");
-      const folders = [...folder.parentElement.querySelectorAll(":scope > [data-sortable-folder]")];
-      const from = folders.indexOf(folder);
-      const to = from + Number(orderButton.dataset.folderStep);
-      if (!folders[to]) return;
-      [folders[from], folders[to]] = [folders[to], folders[from]];
-      const saved = await saveFolderOrder(folders.map(item => item.dataset.sortableFolder));
-      if (saved) {
-        const current = document.querySelector(`.subscription-manager[open] .folder-board > [data-sortable-folder="${folder.dataset.sortableFolder}"]`);
-        const button = current?.querySelector(`[data-folder-step="${orderButton.dataset.folderStep}"]:not(:disabled)`);
-        (button || current?.querySelector("[data-folder-step]:not(:disabled)"))?.focus();
-      }
+      await folders.moveOrder(orderButton);
       return;
     }
     const managerButton = event.target.closest("[data-manage-feeds], [data-close-manager]");
@@ -707,62 +775,6 @@
     }
   });
 
-  let draggedFeed = null;
-  let dropTarget = null;
-
-  function highlightDropTarget(target) {
-    dropTarget?.classList.remove("drop-target");
-    dropTarget = target;
-    dropTarget?.classList.add("drop-target");
-  }
-
-  document.addEventListener("dragstart", event => {
-    const link = event.target.closest("[data-feed-drag]");
-    if (!link) return;
-    draggedFeed = link;
-    link.classList.add("dragging");
-    event.dataTransfer.setData("text/plain", link.textContent.trim());
-    event.dataTransfer.effectAllowed = "move";
-  });
-
-  document.addEventListener("dragover", event => {
-    if (!draggedFeed) return;
-    const target = event.target.closest("[data-folder-drop]");
-    highlightDropTarget(target);
-    if (!target) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-  });
-
-  document.addEventListener("dragend", () => {
-    draggedFeed?.classList.remove("dragging");
-    draggedFeed = null;
-    highlightDropTarget(null);
-  });
-
-  document.addEventListener("drop", event => {
-    if (!draggedFeed) return;
-    const target = event.target.closest("[data-folder-drop]");
-    const source = draggedFeed;
-    source.classList.remove("dragging");
-    draggedFeed = null;
-    highlightDropTarget(null);
-    if (!target) return;
-    event.preventDefault();
-    const originalFolder = source.closest(".folder-card") || source.closest("details")?.querySelector("[data-folder-drop]");
-    if (originalFolder?.dataset.folderDrop === target.dataset.folderDrop) return;
-    void navigate(`/folders/move/${source.dataset.feedDrag}`, {
-      method: "POST",
-      body: new URLSearchParams({
-        folder: target.dataset.folderDrop,
-        return_to: location.pathname + location.search,
-      }),
-      history: "replace",
-      refreshList: true,
-      keepReaderScroll: true,
-    });
-  });
-
   document.addEventListener("submit", (event) => {
     const form = event.target;
     if (!form.closest("#workspace, .sidebar")) return;
@@ -787,7 +799,7 @@
 
   addEventListener("popstate", () => void navigate(location.href, { history: "none" }));
   setCursor(articleRows().find(row => row.dataset.articleId === keyboardCursorID));
-  restoreFolders(document.querySelector(".sidebar"));
+  folders.restoreFolders(document.querySelector(".sidebar"));
   observeNextPage();
   scheduleContentCheck();
 })();
