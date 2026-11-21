@@ -17,3 +17,9 @@ Composeの初期設定ではローカルからアクセスできます。アプ�
 ## 開発
 
 [開発・検証手順](AGENTS.md) · [設計方針](docs/architecture.md)
+
+## Dockerイメージの公開
+
+`docker login ghcr.io` で認証してから `make publish` を実行すると、現在の作業ツリーから実行用イメージをビルドし、`ghcr.io/otknoy/rss-reader` に登録します。登録先のホストは `REGISTRY` で指定できます。
+
+タグは実行時のUTC日時を `YYYYMMDDhhmmss` 形式で付けます。イメージの `org.opencontainers.image.revision` ラベルには実行時の `HEAD` を記録します。

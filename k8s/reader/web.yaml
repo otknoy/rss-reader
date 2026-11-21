@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rss-reader
+  namespace: rss-reader
+spec:
+  selector:
+    app: reader
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rss-reader
+  namespace: rss-reader
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: reader
+  template:
+    metadata:
+      labels:
+        app: reader
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: reader
+          image: ghcr.io/otknoy/rss-reader:20261121160835
+          args: ["web"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: FEEDS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: FEEDS_PASSWORD
+            - name: FEEDS_DATABASE_URL
+              value: postgres://feeds_app:$(FEEDS_PASSWORD)@postgres:5432/reader?sslmode=disable
+            - name: ARTICLES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: ARTICLES_PASSWORD
+            - name: ARTICLES_DATABASE_URL
+              value: postgres://articles_app:$(ARTICLES_PASSWORD)@postgres:5432/reader?sslmode=disable
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
