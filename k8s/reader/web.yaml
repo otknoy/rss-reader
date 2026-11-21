@@ -3,6 +3,9 @@ kind: Service
 metadata:
   name: rss-reader
   namespace: rss-reader
+  annotations:
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "rss-reader"
 spec:
   selector:
     app: reader
