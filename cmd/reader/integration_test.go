@@ -26,28 +26,29 @@ import (
 )
 
 // Every run gets its own database. No development tables are cleared.
-func TestPrototypeIntegration(t *testing.T) {
+func setupIntegrationDB(t *testing.T) (ctx context.Context, owner, fdb, adb *sql.DB, connect func(string) *sql.DB) {
+	t.Helper()
 	adminDSN := os.Getenv("INTEGRATION_DATABASE_URL")
 	if adminDSN == "" {
 		t.Skip("run via docker compose --profile test run --build --rm test")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	admin, err := sql.Open("pgx", adminDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
+	t.Cleanup(func() {
 		if err := admin.Close(); err != nil {
 			t.Errorf("close admin database: %v", err)
 		}
-	}()
+	})
 	name := fmt.Sprintf("reader_test_%d", time.Now().UnixNano())
 	if _, err := admin.ExecContext(ctx, `CREATE DATABASE `+name); err != nil {
 		t.Fatal(err)
 	}
 	var connections []*sql.DB
-	defer func() {
+	t.Cleanup(func() {
 		for _, db := range connections {
 			if err := db.Close(); err != nil {
 				t.Errorf("close database: %v", err)
@@ -58,8 +59,8 @@ func TestPrototypeIntegration(t *testing.T) {
 		if _, err := admin.ExecContext(cleanup, `DROP DATABASE `+name+` WITH (FORCE)`); err != nil {
 			t.Errorf("cleanup: %v", err)
 		}
-	}()
-	connect := func(dsn string) *sql.DB {
+	})
+	connect = func(dsn string) *sql.DB {
 		t.Helper()
 		u, err := url.Parse(dsn)
 		if err != nil {
@@ -73,15 +74,20 @@ func TestPrototypeIntegration(t *testing.T) {
 		connections = append(connections, db)
 		return db
 	}
-	owner := connect(adminDSN)
+	owner = connect(adminDSN)
 	if err := migrations.Run(ctx, owner); err != nil {
 		t.Fatal(err)
 	}
+	fdb = connect(os.Getenv("FEEDS_DATABASE_URL"))
+	adb = connect(os.Getenv("ARTICLES_DATABASE_URL"))
+	return ctx, owner, fdb, adb, connect
+}
+
+func TestPrototypeIntegration(t *testing.T) {
+	ctx, owner, fdb, adb, connect := setupIntegrationDB(t)
 	if err := migrations.Run(ctx, owner); err != nil {
 		t.Fatalf("migration rerun: %v", err)
 	}
-	fdb := connect(os.Getenv("FEEDS_DATABASE_URL"))
-	adb := connect(os.Getenv("ARTICLES_DATABASE_URL"))
 	for _, tc := range []struct {
 		db    *sql.DB
 		table string
