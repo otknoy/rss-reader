@@ -83,8 +83,8 @@ func setupIntegrationDB(t *testing.T) (ctx context.Context, owner, fdb, adb *sql
 	return ctx, owner, fdb, adb, connect
 }
 
-func TestPrototypeIntegration(t *testing.T) {
-	ctx, owner, fdb, adb, connect := setupIntegrationDB(t)
+func TestDatabasePermissionsIntegration(t *testing.T) {
+	ctx, owner, fdb, adb, _ := setupIntegrationDB(t)
 	if err := migrations.Run(ctx, owner); err != nil {
 		t.Fatalf("migration rerun: %v", err)
 	}
@@ -98,6 +98,10 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("expected permission denial for %s, got %v", tc.table, err)
 		}
 	}
+}
+
+func TestPrototypeIntegration(t *testing.T) {
+	ctx, owner, fdb, adb, connect := setupIntegrationDB(t)
 	fs, as := feeds.New(fdb), articles.New(adb)
 	if err := fs.Add(ctx, "https://example.com/feed.xml"); err != nil {
 		t.Fatal(err)
