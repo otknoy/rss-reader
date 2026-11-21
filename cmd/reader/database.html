@@ -31,11 +31,12 @@
     <a href="?table=folders" {{if eq .Table "folders"}}aria-current="page"{{end}}>フォルダー</a>
     <a href="?table=closed_folders" {{if eq .Table "closed_folders"}}aria-current="page"{{end}}>閉じているフォルダー</a>
     <a href="?table=entries" {{if eq .Table "entries"}}aria-current="page"{{end}}>記事</a>
+    <a href="?table=full_contents" {{if eq .Table "full_contents"}}aria-current="page"{{end}}>取得済み全文</a>
     <a href="?table=article_views" {{if eq .Table "article_views"}}aria-current="page"{{end}}>閲覧イベント</a>
   </nav>
   <h2><code>{{.QualifiedTable}}</code></h2>
   {{if not .Back}}<p>{{.Page}}ページ目 · {{len .Rows}}件表示</p>{{end}}
-  {{if .Back}}<a href="{{.Back}}">記事レコード一覧へ</a>{{end}}
+  {{if .Back}}<a href="{{.Back}}">レコード一覧へ</a>{{end}}
   {{if .Rows}}
   <div class="table-scroll" role="region" aria-label="{{.QualifiedTable}} のデータ" tabindex="0">
   {{if .Back}}
@@ -50,7 +51,7 @@
   {{else}}
     <table aria-label="{{.QualifiedTable}}">
       <thead><tr>
-        {{if eq .Table "entries"}}<th scope="col">詳細</th>{{end}}
+        {{if .HasDetail}}<th scope="col">詳細</th>{{end}}
         {{range .Columns}}<th scope="col"><code>{{.}}</code></th>{{end}}
       </tr></thead>
       <tbody>

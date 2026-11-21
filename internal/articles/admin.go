@@ -6,14 +6,30 @@ import "context"
 func (s *Store) Inspect(ctx context.Context, id, limit, offset int64) ([]byte, error) {
 	var data []byte
 	if id > 0 {
-		err := s.db.QueryRowContext(ctx, "SELECT jsonb_build_array(to_jsonb(e)) FROM articles.entries e WHERE id=$1", id).Scan(&data)
+		err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_array(to_jsonb(e))
+			FROM articles.entries e WHERE id=$1`, id).Scan(&data)
 		return data, err
 	}
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(t ORDER BY t.id DESC), '[]'::jsonb) FROM (
 		SELECT id, source_id, title, url, published_at, created_at, is_read, favorite, deleted_at,
-			full_fetched_at, full_next_fetch_at, full_fetch_until, full_fetch_error
+			first_opened_at, last_opened_at, full_next_fetch_at, full_fetch_until, full_fetch_error
 		FROM articles.entries ORDER BY id DESC LIMIT $1 OFFSET $2
 	) AS t`, limit, offset).Scan(&data)
+	return data, err
+}
+
+// InspectFullContents lists saved full text metadata or returns a single record.
+func (s *Store) InspectFullContents(ctx context.Context, id, limit, offset int64) ([]byte, error) {
+	var data []byte
+	if id > 0 {
+		err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_array(to_jsonb(f))
+			FROM articles.full_contents f WHERE article_id=$1`, id).Scan(&data)
+		return data, err
+	}
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(f ORDER BY f.article_id DESC), '[]'::jsonb) FROM (
+		SELECT article_id, source_url, fetched_at FROM articles.full_contents
+		ORDER BY article_id DESC LIMIT $1 OFFSET $2
+	) AS f`, limit, offset).Scan(&data)
 	return data, err
 }
 

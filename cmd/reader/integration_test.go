@@ -247,7 +247,7 @@ func TestPrototypeIntegration(t *testing.T) {
 		t.Fatalf("detail HTTP: %d", w.Code)
 	}
 	t.Run("read-only database inspection", func(t *testing.T) {
-		for _, table := range []string{"subscriptions", "folders", "closed_folders", "entries", "article_views"} {
+		for _, table := range []string{"subscriptions", "folders", "closed_folders", "entries", "full_contents", "article_views"} {
 			if w := request("GET", "/admin/database?table="+table, nil); w.Code != http.StatusOK {
 				t.Fatalf("inspect %s: %d", table, w.Code)
 			}
@@ -258,8 +258,14 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("inspect article table: %d", list.Code)
 		}
 		w := request("GET", fmt.Sprintf("/admin/database?table=entries&id=%d", articleID), nil)
-		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), full.Text) {
-			t.Fatalf("inspect article body: %d", w.Code)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "<code>body_text</code>") ||
+			strings.Contains(w.Body.String(), "full_body_text") {
+			t.Fatalf("inspect RSS article record: %d", w.Code)
+		}
+		fullRecord := request("GET", fmt.Sprintf("/admin/database?table=full_contents&id=%d", articleID), nil)
+		if fullRecord.Code != http.StatusOK || !strings.Contains(fullRecord.Body.String(), full.Text) ||
+			!strings.Contains(fullRecord.Body.String(), "<code>fetched_at</code>") {
+			t.Fatalf("inspect full content record: %d", fullRecord.Code)
 		}
 		if w := request("GET", "/admin/database?table=unknown", nil); w.Code != http.StatusNotFound {
 			t.Fatalf("unknown table status: %d", w.Code)

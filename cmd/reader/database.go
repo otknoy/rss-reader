@@ -33,10 +33,17 @@ func (a *application) database(w http.ResponseWriter, r *http.Request) {
 		}
 		number = n
 	}
+	detailKey := ""
+	switch table {
+	case "entries":
+		detailKey = "id"
+	case "full_contents":
+		detailKey = "article_id"
+	}
 	var id int64
 	if raw := q.Get("id"); raw != "" {
 		n, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || n < 1 || table != "entries" {
+		if err != nil || n < 1 || detailKey == "" {
 			http.Error(w, "記事IDの指定が不正です", http.StatusBadRequest)
 			return
 		}
@@ -47,6 +54,8 @@ func (a *application) database(w http.ResponseWriter, r *http.Request) {
 	switch table {
 	case "entries":
 		data, err = a.articles.Inspect(r.Context(), id, pageSize+1, (number-1)*pageSize)
+	case "full_contents":
+		data, err = a.articles.InspectFullContents(r.Context(), id, pageSize+1, (number-1)*pageSize)
 	case "article_views":
 		data, err = a.articles.InspectViews(r.Context(), pageSize+1, (number-1)*pageSize)
 	case "subscriptions", "folders", "closed_folders":
@@ -67,13 +76,14 @@ func (a *application) database(w http.ResponseWriter, r *http.Request) {
 	model := struct {
 		Table, QualifiedTable, Previous, Next, Back string
 		Page                                        int64
+		HasDetail                                   bool
 		Columns                                     []string
 		Rows                                        []struct {
 			Values []string
 			Detail string
 		}
-	}{Table: table, QualifiedTable: "feeds." + table, Page: number}
-	if table == "entries" || table == "article_views" {
+	}{Table: table, QualifiedTable: "feeds." + table, Page: number, HasDetail: detailKey != ""}
+	if table == "entries" || table == "article_views" || table == "full_contents" {
 		model.QualifiedTable = "articles." + table
 	}
 	pageURL := func(n int64) string {
@@ -111,8 +121,8 @@ func (a *application) database(w http.ResponseWriter, r *http.Request) {
 			}
 			row.Values = append(row.Values, value)
 		}
-		if table == "entries" && id == 0 {
-			row.Detail = pageURL(number) + "&id=" + url.QueryEscape(string(record["id"]))
+		if detailKey != "" && id == 0 {
+			row.Detail = pageURL(number) + "&id=" + url.QueryEscape(string(record[detailKey]))
 		}
 		model.Rows = append(model.Rows, row)
 	}

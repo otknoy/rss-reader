@@ -74,7 +74,9 @@ func (s *Store) Save(ctx context.Context, a Article) error {
 	return err
 }
 
-const columns = `id,source_id,external_id,source_name,url,title,body_text,body_html,published_at,is_read,favorite,full_body_html,full_body_text,full_source_url,full_fetched_at,(full_next_fetch_at IS NOT NULL),full_fetch_error`
+const columns = `e.id,e.source_id,e.external_id,e.source_name,e.url,e.title,e.body_text,e.body_html,e.published_at,e.is_read,e.favorite,
+ COALESCE(f.body_html,''),COALESCE(f.body_text,''),COALESCE(f.source_url,''),f.fetched_at,(e.full_next_fetch_at IS NOT NULL),e.full_fetch_error`
+const fullContentJoin = ` LEFT JOIN articles.full_contents f ON f.article_id=e.id`
 const listColumns = `id,source_id,source_name,url,title,published_at,is_read,favorite`
 
 func scan(row interface{ Scan(...any) error }) (Article, error) {
@@ -85,13 +87,16 @@ func scan(row interface{ Scan(...any) error }) (Article, error) {
 
 // Get returns an article that has not been deleted.
 func (s *Store) Get(ctx context.Context, id int64) (Article, error) {
-	return scan(s.db.QueryRowContext(ctx, `SELECT `+columns+` FROM articles.entries WHERE id=$1 AND deleted_at IS NULL`, id))
+	return scan(s.db.QueryRowContext(ctx, `SELECT `+columns+` FROM articles.entries e`+fullContentJoin+` WHERE e.id=$1 AND e.deleted_at IS NULL`, id))
 }
 
 // Open marks an article as read and reports whether that changed its state.
 func (s *Store) Open(ctx context.Context, id int64) (Article, bool, error) {
-	article, err := scan(s.db.QueryRowContext(ctx, `UPDATE articles.entries SET is_read=true
-		WHERE id=$1 AND deleted_at IS NULL AND NOT is_read RETURNING `+columns, id))
+	article, err := scan(s.db.QueryRowContext(ctx, `WITH opened AS (
+		UPDATE articles.entries SET is_read=true
+		WHERE id=$1 AND deleted_at IS NULL AND NOT is_read RETURNING *
+	)
+	SELECT `+columns+` FROM opened e`+fullContentJoin, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		article, err = s.Get(ctx, id)
 		return article, false, err
@@ -169,7 +174,7 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	}
 	// Escape LIKE metacharacters so user queries are literal substring searches.
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(q.Text)) + "%"
-	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR full_body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($4::bigint[] IS NULL OR source_id=ANY($4::bigint[])) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='read' AND is_read) OR ($3='favorites' AND favorite) OR ($3='unread-favorites' AND NOT is_read AND favorite))`
+	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR EXISTS (SELECT 1 FROM articles.full_contents f WHERE f.article_id=entries.id AND f.body_text ILIKE $1)) AND ($2::bigint=0 OR source_id=$2) AND ($4::bigint[] IS NULL OR source_id=ANY($4::bigint[])) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='read' AND is_read) OR ($3='favorites' AND favorite) OR ($3='unread-favorites' AND NOT is_read AND favorite))`
 	args := []any{pattern, q.FeedID, q.View, q.FeedIDs}
 	history := q.View == "history"
 	if history {
@@ -256,38 +261,58 @@ type FullContent struct{ Title, HTML, Text, URL string }
 
 // SaveFullContent preserves feed content and reading state when saving extracted content.
 func (s *Store) SaveFullContent(ctx context.Context, id int64, content FullContent) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET
- full_body_html=$2,full_body_text=$3,full_source_url=$4,full_fetched_at=now(),full_next_fetch_at=NULL,full_fetch_until=NULL,full_fetch_error='',
- title=CASE WHEN title=url AND $5<>'' THEN $5 ELSE title END
- WHERE id=$1 AND deleted_at IS NULL`, id, content.HTML, content.Text, content.URL, content.Title)
+	result, err := s.db.ExecContext(ctx, `WITH saved AS (
+		UPDATE articles.entries SET
+			full_next_fetch_at=NULL,full_fetch_until=NULL,full_fetch_error='',
+			title=CASE WHEN title=url AND $5<>'' THEN $5 ELSE title END
+		WHERE id=$1 AND deleted_at IS NULL
+		RETURNING id
+	)
+	INSERT INTO articles.full_contents (article_id, body_html, body_text, source_url, fetched_at)
+	SELECT id, $2, $3, $4, now() FROM saved
+	ON CONFLICT (article_id) DO UPDATE SET
+		body_html=EXCLUDED.body_html,body_text=EXCLUDED.body_text,
+		source_url=EXCLUDED.source_url,fetched_at=EXCLUDED.fetched_at`,
+		id, content.HTML, content.Text, content.URL, content.Title)
 	return affected(result, err)
 }
 
 // RecordDisplay records each display once and schedules extraction if needed.
 func (s *Store) RecordDisplay(ctx context.Context, id int64, viewID string) (item Article, err error) {
-	err = s.db.QueryRowContext(ctx, `WITH target AS (
-		SELECT id, url FROM articles.entries WHERE id=$1 AND deleted_at IS NULL FOR UPDATE
-	), recorded AS (
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return item, err
+	}
+	defer tx.Rollback()
+
+	// Lock the article first so the next statement sees any concurrent full-content save.
+	if err := tx.QueryRowContext(ctx, `SELECT id, url FROM articles.entries
+		WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&item.ID, &item.URL); err != nil {
+		return item, err
+	}
+	err = tx.QueryRowContext(ctx, `WITH recorded AS (
 		INSERT INTO articles.article_views (id, article_id, viewed_at)
-		SELECT COALESCE(NULLIF($2, '')::uuid, gen_random_uuid()), id, now() FROM target
+		VALUES (COALESCE(NULLIF($2, '')::uuid, gen_random_uuid()), $1, now())
 		ON CONFLICT (id) DO NOTHING
 		RETURNING article_id, viewed_at
 	), updated AS (
 		UPDATE articles.entries AS e SET
 			first_opened_at=COALESCE(e.first_opened_at, recorded.viewed_at),
 			last_opened_at=GREATEST(e.last_opened_at, recorded.viewed_at),
-			full_next_fetch_at=CASE WHEN e.full_fetched_at IS NULL THEN COALESCE(e.full_next_fetch_at, recorded.viewed_at) END
+			full_next_fetch_at=CASE WHEN NOT EXISTS (SELECT 1 FROM articles.full_contents f WHERE f.article_id=e.id) THEN COALESCE(e.full_next_fetch_at, recorded.viewed_at) END
 		FROM recorded WHERE e.id=recorded.article_id
 		RETURNING e.id, (e.full_next_fetch_at IS NOT NULL) AS pending
 	)
-	SELECT target.id, target.url, COALESCE(updated.pending, false)
-	FROM target LEFT JOIN updated USING (id)`, id, viewID).Scan(&item.ID, &item.URL, &item.FullContentPending)
-	return item, err
+	SELECT COALESCE((SELECT pending FROM updated), false)`, id, viewID).Scan(&item.FullContentPending)
+	if err != nil {
+		return item, err
+	}
+	return item, tx.Commit()
 }
 
 // PendingFullContent returns one bounded batch of articles awaiting extraction.
 func (s *Store) PendingFullContent(ctx context.Context) (items []Article, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries
+	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries e`+fullContentJoin+`
  WHERE deleted_at IS NULL AND full_next_fetch_at<=now()
  AND (full_fetch_until IS NULL OR full_fetch_until<=now())
  ORDER BY full_next_fetch_at,id LIMIT 10`)
