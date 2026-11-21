@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-monitor-setup
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: postgres:17.6-bookworm
+          command: ["/bin/sh", "/setup/setup-postgres-monitor.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: PGDATABASE
+              value: reader
+            - name: PGUSER
+              value: postgres
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_EXPORTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-exporter-credentials
+                  key: password
+          volumeMounts:
+            - name: setup
+              mountPath: /setup
+              readOnly: true
+      volumes:
+        - name: setup
+          configMap:
+            name: postgres-monitor-setup
