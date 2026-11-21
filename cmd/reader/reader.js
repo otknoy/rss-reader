@@ -10,8 +10,6 @@
   let keyboardCursorID = selectedID();
   let pageMovePending = false;
   let favoritePending = false;
-  let nextPageRequest;
-
   function contextKey(raw) {
     const url = new URL(raw, location.href);
     for (const key of ["article", "message", "added", "existing", "skipped"]) url.searchParams.delete(key);
@@ -111,7 +109,7 @@
         oldList.querySelector(".results .muted").textContent = nextList.querySelector(".results .muted").textContent;
       } else if (refreshWorkspace) {
         oldList.replaceWith(nextList);
-        observeNextPage();
+        pagination.observeNextPage();
         nextList.scrollTop = sameContext ? listScroll : 0;
       }
       if (refreshWorkspace) {
@@ -386,76 +384,81 @@
     });
   }
 
-  const narrowWorkspace = matchMedia("(max-width: 600px)");
-  let nextPageObserver;
+  const pagination = (() => {
+    let nextPageRequest;
+    const narrowWorkspace = matchMedia("(max-width: 600px)");
+    let nextPageObserver;
 
-  function observeNextPage() {
-    nextPageObserver?.disconnect();
-    const list = document.querySelector("#list-pane");
-    const link = list.querySelector("[data-next-articles]");
-    if (!link) return;
-    nextPageObserver = new IntersectionObserver((entries, observer) => {
-      if (observer !== nextPageObserver) return;
-      for (const entry of entries) {
-        if (entry.isIntersecting) void loadNextPage(entry.target);
-      }
-    }, {
-      root: narrowWorkspace.matches ? null : list,
-      rootMargin: "0px 0px 320px 0px",
-    });
-    nextPageObserver.observe(link);
-  }
-
-  narrowWorkspace.addEventListener("change", observeNextPage);
-
-  async function appendNextPage(link) {
-    const footer = link.closest(".auto-paging");
-    link.setAttribute("aria-busy", "true");
-    try {
-      const response = await fetch(link.href, { credentials: "same-origin" });
-      if (!response.ok) throw new Error();
-      const html = await response.text();
-      if (!link.isConnected) return;
-      const page = new DOMParser().parseFromString(html, "text/html").querySelector("#list-pane");
-      if (!page) throw new Error();
-
-      const existing = new Set(articleRows().map(row => row.dataset.articleId));
-      for (const row of page.querySelectorAll("[data-article-id]")) {
-        if (existing.has(row.dataset.articleId)) continue;
-        const articleLink = row.querySelector("h2 a");
-        const articleURL = new URL(location.href);
-        articleURL.searchParams.set("article", row.dataset.articleId);
-        articleLink.href = articleURL.href;
-        for (const input of row.querySelectorAll('input[name="return_to"]')) {
-          input.value = location.pathname + location.search;
+    function observeNextPage() {
+      nextPageObserver?.disconnect();
+      const list = document.querySelector("#list-pane");
+      const link = list.querySelector("[data-next-articles]");
+      if (!link) return;
+      nextPageObserver = new IntersectionObserver((entries, observer) => {
+        if (observer !== nextPageObserver) return;
+        for (const entry of entries) {
+          if (entry.isIntersecting) void loadNextPage(entry.target);
         }
-        footer.before(row);
-      }
-      const next = page.querySelector(".auto-paging");
-      const nextHref = next?.querySelector("a").getAttribute("href");
-      if (nextHref && new URL(nextHref, response.url).href !== link.href) footer.replaceWith(next);
-      else footer.remove();
-      observeNextPage();
-    } catch {
-      if (link.isConnected) {
-        nextPageObserver.unobserve(link);
-        showError("次の記事を読み込めませんでした。もう一度お試しください。");
-      }
-    } finally {
-      link.removeAttribute("aria-busy");
+      }, {
+        root: narrowWorkspace.matches ? null : list,
+        rootMargin: "0px 0px 320px 0px",
+      });
+      nextPageObserver.observe(link);
     }
-  }
 
-  function loadNextPage(link) {
-    if (!link?.isConnected) return;
-    if (nextPageRequest?.link === link) return nextPageRequest.done;
-    const done = appendNextPage(link);
-    nextPageRequest = { link, done };
-    void done.finally(() => {
-      if (nextPageRequest?.link === link) nextPageRequest = undefined;
-    });
-    return done;
-  }
+    narrowWorkspace.addEventListener("change", observeNextPage);
+
+    async function appendNextPage(link) {
+      const footer = link.closest(".auto-paging");
+      link.setAttribute("aria-busy", "true");
+      try {
+        const response = await fetch(link.href, { credentials: "same-origin" });
+        if (!response.ok) throw new Error();
+        const html = await response.text();
+        if (!link.isConnected) return;
+        const page = new DOMParser().parseFromString(html, "text/html").querySelector("#list-pane");
+        if (!page) throw new Error();
+
+        const existing = new Set(articleRows().map(row => row.dataset.articleId));
+        for (const row of page.querySelectorAll("[data-article-id]")) {
+          if (existing.has(row.dataset.articleId)) continue;
+          const articleLink = row.querySelector("h2 a");
+          const articleURL = new URL(location.href);
+          articleURL.searchParams.set("article", row.dataset.articleId);
+          articleLink.href = articleURL.href;
+          for (const input of row.querySelectorAll('input[name="return_to"]')) {
+            input.value = location.pathname + location.search;
+          }
+          footer.before(row);
+        }
+        const next = page.querySelector(".auto-paging");
+        const nextHref = next?.querySelector("a").getAttribute("href");
+        if (nextHref && new URL(nextHref, response.url).href !== link.href) footer.replaceWith(next);
+        else footer.remove();
+        observeNextPage();
+      } catch {
+        if (link.isConnected) {
+          nextPageObserver.unobserve(link);
+          showError("次の記事を読み込めませんでした。もう一度お試しください。");
+        }
+      } finally {
+        link.removeAttribute("aria-busy");
+      }
+    }
+
+    function loadNextPage(link) {
+      if (!link?.isConnected) return;
+      if (nextPageRequest?.link === link) return nextPageRequest.done;
+      const done = appendNextPage(link);
+      nextPageRequest = { link, done };
+      void done.finally(() => {
+        if (nextPageRequest?.link === link) nextPageRequest = undefined;
+      });
+      return done;
+    }
+
+    return { observeNextPage, loadNextPage };
+  })();
 
   async function moveCursor(delta) {
     if (pageMovePending || favoritePending) return;
@@ -467,7 +470,7 @@
       const next = index < 0 ? 0 : index + delta;
       const nextPage = list.querySelector("[data-next-articles]");
       const preload = next >= 0 && rows.length - next <= 5
-        ? loadNextPage(nextPage)
+        ? pagination.loadNextPage(nextPage)
         : undefined;
       if (!rows[next] && delta > 0) {
         await preload;
@@ -731,7 +734,7 @@
     const nextPage = event.target.closest("[data-next-articles]");
     if (nextPage && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
       event.preventDefault();
-      await loadNextPage(nextPage);
+      await pagination.loadNextPage(nextPage);
       return;
     }
     if (event.target.closest("[data-show-shortcuts]")) {
@@ -800,6 +803,6 @@
   addEventListener("popstate", () => void navigate(location.href, { history: "none" }));
   setCursor(articleRows().find(row => row.dataset.articleId === keyboardCursorID));
   folders.restoreFolders(document.querySelector(".sidebar"));
-  observeNextPage();
+  pagination.observeNextPage();
   scheduleContentCheck();
 })();
