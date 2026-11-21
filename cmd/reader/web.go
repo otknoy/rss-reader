@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 //go:embed page.html
@@ -573,7 +574,16 @@ func (a *application) contentStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodPost {
-		item, err := a.articles.RecordDisplay(r.Context(), n)
+		viewID := r.Header.Get("X-Article-View-ID")
+		if viewID != "" {
+			var uuid pgtype.UUID
+			if err := uuid.Scan(viewID); err != nil {
+				http.Error(w, "閲覧IDの指定が不正です", http.StatusBadRequest)
+				return
+			}
+			viewID = uuid.String()
+		}
+		item, err := a.articles.RecordDisplay(r.Context(), n, viewID)
 		if err != nil {
 			fail(w, err)
 			return

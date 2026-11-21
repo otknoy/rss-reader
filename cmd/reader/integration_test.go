@@ -247,7 +247,7 @@ func TestPrototypeIntegration(t *testing.T) {
 		t.Fatalf("detail HTTP: %d", w.Code)
 	}
 	t.Run("read-only database inspection", func(t *testing.T) {
-		for _, table := range []string{"subscriptions", "folders", "closed_folders", "entries"} {
+		for _, table := range []string{"subscriptions", "folders", "closed_folders", "entries", "article_views"} {
 			if w := request("GET", "/admin/database?table="+table, nil); w.Code != http.StatusOK {
 				t.Fatalf("inspect %s: %d", table, w.Code)
 			}
@@ -359,6 +359,38 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, manualItem.ID).Scan(&manualOpenedAt); err != nil || manualOpenedAt == nil {
 			t.Fatalf("display of already fetched article was not recorded: %v %v", manualOpenedAt, err)
 		}
+		postView := func(viewID string) int {
+			req := httptest.NewRequest(http.MethodPost, manualContentURL, nil)
+			req.Header.Set("X-Article-View-ID", viewID)
+			w := httptest.NewRecorder()
+			app.routes().ServeHTTP(w, req)
+			return w.Code
+		}
+		if status := postView("invalid"); status != http.StatusBadRequest {
+			t.Fatalf("invalid viewing ID: status %d", status)
+		}
+		viewID := "d67d845a-0fb5-46ee-9097-d440d014efdb"
+		for range 2 {
+			if status := postView(viewID); status != http.StatusOK {
+				t.Fatalf("viewing event: status %d", status)
+			}
+		}
+		var count int
+		var last, event time.Time
+		if err := owner.QueryRowContext(ctx, `SELECT count(*), e.last_opened_at, max(v.viewed_at)
+			FROM articles.entries e JOIN articles.article_views v ON v.article_id=e.id
+			WHERE e.id=$1 GROUP BY e.id`, manualItem.ID).Scan(&count, &last, &event); err != nil {
+			t.Fatal(err)
+		}
+		if count != 2 || !last.Equal(event) {
+			t.Fatalf("expected two distinct displays and matching latest times: %d, %v, %v", count, last, event)
+		}
+		viewList := request("GET", "/admin/database?table=article_views", nil)
+		if viewList.Code != http.StatusOK || !strings.Contains(viewList.Body.String(), "<code>article_id</code>") ||
+			!strings.Contains(viewList.Body.String(), "<code>viewed_at</code>") ||
+			strings.Count(viewList.Body.String(), viewID) != 1 {
+			t.Fatalf("inspect viewing events: status %d", viewList.Code)
+		}
 		queued := articles.Article{SourceID: 999, ExternalID: "queue-one", URL: "https://example.com/queue-one", Title: "取得待ちのテスト", BodyText: "RSSの要約"}
 		if err := as.Save(ctx, queued); err != nil {
 			t.Fatal(err)
@@ -383,7 +415,7 @@ func TestPrototypeIntegration(t *testing.T) {
 		if w := request("GET", contentURL, nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
 			t.Fatalf("undisplayed article was queued: %d %s", w.Code, w.Body.String())
 		}
-		if item, err := as.RecordDisplay(ctx, queuedID); err != nil || !item.FullContentPending {
+		if item, err := as.RecordDisplay(ctx, queuedID, ""); err != nil || !item.FullContentPending {
 			t.Fatalf("display did not schedule extraction: %+v %v", item, err)
 		}
 		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&openedAt); err != nil || openedAt == nil {
@@ -717,7 +749,7 @@ func TestPrototypeIntegration(t *testing.T) {
 			strings.Contains(firstBody, ">history-fixture-22</a>") {
 			t.Fatalf("unexpected first history page: status %d", first.Code)
 		}
-		if _, err := as.RecordDisplay(ctx, boundaryID); err != nil {
+		if _, err := as.RecordDisplay(ctx, boundaryID, ""); err != nil {
 			t.Fatal(err)
 		}
 		second := request("GET", strings.ReplaceAll(next[1], "&amp;", "&"), nil)

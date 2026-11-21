@@ -16,3 +16,13 @@ func (s *Store) Inspect(ctx context.Context, id, limit, offset int64) ([]byte, e
 	) AS t`, limit, offset).Scan(&data)
 	return data, err
 }
+
+// InspectViews lists viewing events from newest to oldest.
+func (s *Store) InspectViews(ctx context.Context, limit, offset int64) ([]byte, error) {
+	var data []byte
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(v ORDER BY v.viewed_at DESC, v.id DESC), '[]'::jsonb) FROM (
+		SELECT id, article_id, viewed_at FROM articles.article_views
+		ORDER BY viewed_at DESC, id DESC LIMIT $1 OFFSET $2
+	) AS v`, limit, offset).Scan(&data)
+	return data, err
+}

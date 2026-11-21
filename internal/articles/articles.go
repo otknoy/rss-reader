@@ -263,14 +263,25 @@ func (s *Store) SaveFullContent(ctx context.Context, id int64, content FullConte
 	return affected(result, err)
 }
 
-// RecordDisplay records the display time and schedules extraction if needed.
-func (s *Store) RecordDisplay(ctx context.Context, id int64) (item Article, err error) {
-	err = s.db.QueryRowContext(ctx, `UPDATE articles.entries SET
- first_opened_at=COALESCE(first_opened_at, now()),
- last_opened_at=GREATEST(last_opened_at, now()),
- full_next_fetch_at=CASE WHEN full_fetched_at IS NULL THEN COALESCE(full_next_fetch_at, now()) END
- WHERE id=$1 AND deleted_at IS NULL
- RETURNING id,url,(full_next_fetch_at IS NOT NULL)`, id).Scan(&item.ID, &item.URL, &item.FullContentPending)
+// RecordDisplay records each display once and schedules extraction if needed.
+func (s *Store) RecordDisplay(ctx context.Context, id int64, viewID string) (item Article, err error) {
+	err = s.db.QueryRowContext(ctx, `WITH target AS (
+		SELECT id, url FROM articles.entries WHERE id=$1 AND deleted_at IS NULL FOR UPDATE
+	), recorded AS (
+		INSERT INTO articles.article_views (id, article_id, viewed_at)
+		SELECT COALESCE(NULLIF($2, '')::uuid, gen_random_uuid()), id, now() FROM target
+		ON CONFLICT (id) DO NOTHING
+		RETURNING article_id, viewed_at
+	), updated AS (
+		UPDATE articles.entries AS e SET
+			first_opened_at=COALESCE(e.first_opened_at, recorded.viewed_at),
+			last_opened_at=GREATEST(e.last_opened_at, recorded.viewed_at),
+			full_next_fetch_at=CASE WHEN e.full_fetched_at IS NULL THEN COALESCE(e.full_next_fetch_at, recorded.viewed_at) END
+		FROM recorded WHERE e.id=recorded.article_id
+		RETURNING e.id, (e.full_next_fetch_at IS NOT NULL) AS pending
+	)
+	SELECT target.id, target.url, COALESCE(updated.pending, false)
+	FROM target LEFT JOIN updated USING (id)`, id, viewID).Scan(&item.ID, &item.URL, &item.FullContentPending)
 	return item, err
 }
 

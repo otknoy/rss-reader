@@ -185,12 +185,23 @@
     }
   }
 
+  function newViewID() {
+    // getRandomValues also works over HTTP on a local network.
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+  }
+
   function scheduleContentCheck() {
     clearTimeout(contentPollTimer);
     const reader = document.querySelector(".reader[data-reading-id]");
     if (!reader) return;
     const id = reader.dataset.readingId;
-    const requestNow = !displayRequest || !displayRequest.complete;
+    displayRequest ??= { id: newViewID(), complete: false };
+    const request = displayRequest;
+    const requestNow = !request.complete;
     const fetched = reader.dataset.contentFetched === "true";
     if (!requestNow && fetched) return;
     const hadError = reader.dataset.contentError === "true";
@@ -199,24 +210,24 @@
     async function checkContent() {
       try {
         const readStatus = async (method) => {
+          const headers = { Accept: "application/json" };
+          if (method === "POST") headers["X-Article-View-ID"] = request.id;
           const response = await fetch(`/articles/${id}/content-status`, {
-            method, credentials: "same-origin", headers: { Accept: "application/json" },
+            method, credentials: "same-origin", headers,
           });
           if (!response.ok) throw new Error();
           return response.json();
         };
-        if (requestNow && !displayRequest) {
-          const request = { complete: false };
-          displayRequest = request;
+        if (requestNow && !request.result) {
           request.result = readStatus("POST").then(status => {
             request.complete = true;
             return status;
           }, error => {
-            if (displayRequest === request) displayRequest = undefined;
+            request.result = undefined;
             throw error;
           });
         }
-        const status = await (requestNow ? displayRequest.result : readStatus("GET"));
+        const status = await (requestNow ? request.result : readStatus("GET"));
         if (generation !== navigationGeneration || selectedID() !== id) return;
         if ((!status.pending && !fetched) || Boolean(status.error) !== hadError) {
           await navigate(location.href, { history: "none", keepReaderScroll: true });

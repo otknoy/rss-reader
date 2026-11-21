@@ -31,6 +31,7 @@
     <a href="?table=folders" {{if eq .Table "folders"}}aria-current="page"{{end}}>フォルダー</a>
     <a href="?table=closed_folders" {{if eq .Table "closed_folders"}}aria-current="page"{{end}}>閉じているフォルダー</a>
     <a href="?table=entries" {{if eq .Table "entries"}}aria-current="page"{{end}}>記事</a>
+    <a href="?table=article_views" {{if eq .Table "article_views"}}aria-current="page"{{end}}>閲覧イベント</a>
   </nav>
   <h2><code>{{.QualifiedTable}}</code></h2>
   {{if not .Back}}<p>{{.Page}}ページ目 · {{len .Rows}}件表示</p>{{end}}

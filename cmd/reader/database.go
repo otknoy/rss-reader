@@ -47,6 +47,8 @@ func (a *application) database(w http.ResponseWriter, r *http.Request) {
 	switch table {
 	case "entries":
 		data, err = a.articles.Inspect(r.Context(), id, pageSize+1, (number-1)*pageSize)
+	case "article_views":
+		data, err = a.articles.InspectViews(r.Context(), pageSize+1, (number-1)*pageSize)
 	case "subscriptions", "folders", "closed_folders":
 		data, err = a.feeds.Inspect(r.Context(), table, pageSize+1, (number-1)*pageSize)
 	default:
@@ -71,8 +73,8 @@ func (a *application) database(w http.ResponseWriter, r *http.Request) {
 			Detail string
 		}
 	}{Table: table, QualifiedTable: "feeds." + table, Page: number}
-	if table == "entries" {
-		model.QualifiedTable = "articles.entries"
+	if table == "entries" || table == "article_views" {
+		model.QualifiedTable = "articles." + table
 	}
 	pageURL := func(n int64) string {
 		return "/admin/database?" + (url.Values{"table": {table}, "page": {strconv.FormatInt(n, 10)}}).Encode()
