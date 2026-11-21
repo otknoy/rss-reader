@@ -15,7 +15,7 @@ import (
 type Article struct {
 	ID, SourceID                                           int64
 	ExternalID, SourceName, URL, Title, BodyText, BodyHTML string
-	PublishedAt                                            time.Time
+	PublishedAt, LastOpenedAt                              time.Time
 	IsRead, Favorite                                       bool
 	FullBodyHTML, FullBodyText, FullSourceURL              string
 	FullFetchedAt                                          *time.Time
@@ -25,13 +25,14 @@ type Article struct {
 
 // Query selects articles by text, state, feed and page.
 type Query struct {
-	Text, View   string
-	FeedID       int64
-	FeedIDs      []int64
-	Page         int
-	NewestFirst  bool
-	AnchorID     int64
-	BeforeAnchor bool
+	Text, View    string
+	FeedID        int64
+	FeedIDs       []int64
+	Page          int
+	NewestFirst   bool
+	AnchorID      int64
+	BeforeAnchor  bool
+	HistoryBefore time.Time
 }
 
 // Result contains a page of articles and aggregate counts.
@@ -170,13 +171,29 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(q.Text)) + "%"
 	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR full_body_text ILIKE $1) AND ($2::bigint=0 OR source_id=$2) AND ($4::bigint[] IS NULL OR source_id=ANY($4::bigint[])) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='read' AND is_read) OR ($3='favorites' AND favorite) OR ($3='unread-favorites' AND NOT is_read AND favorite))`
 	args := []any{pattern, q.FeedID, q.View, q.FeedIDs}
+	history := q.View == "history"
+	if history {
+		where += " AND last_opened_at IS NOT NULL"
+		args[2] = ""
+	}
 	descending := q.NewestFirst != (q.AnchorID > 0 && q.BeforeAnchor)
 	order, compare := "published_at ASC, id ASC", ">"
 	if descending {
 		order, compare = "published_at DESC, id DESC", "<"
 	}
 	offset := 0
-	if q.AnchorID > 0 {
+	limit := pageSize
+	if history {
+		order = "last_opened_at DESC, id DESC"
+		if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM articles.entries"+where, args...).Scan(&r.Total); err != nil {
+			return r, err
+		}
+		if !q.HistoryBefore.IsZero() && q.AnchorID > 0 {
+			where += " AND (last_opened_at,id) < ($5,$6)"
+			args = append(args, q.HistoryBefore, q.AnchorID)
+		}
+		limit++
+	} else if q.AnchorID > 0 {
 		// The boundary row can be read already. Its sort key still anchors the next page.
 		boundary := "(published_at,id) " + compare + " (SELECT published_at,id FROM articles.entries WHERE id=$5)"
 		args = append(args, q.AnchorID)
@@ -199,21 +216,33 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 		r.HasPrevious, r.HasNext = r.Page > 1, r.Page < r.Pages
 		offset = (r.Page - 1) * pageSize
 	}
-	args = append(args, pageSize, offset)
+	args = append(args, limit, offset)
+	projection := listColumns
+	if history {
+		projection += ",last_opened_at"
+	}
 	paging := fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args))
-	rows, err := s.db.QueryContext(ctx, `SELECT `+listColumns+` FROM articles.entries`+where+` ORDER BY `+order+paging, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+projection+` FROM articles.entries`+where+` ORDER BY `+order+paging, args...)
 	if err != nil {
 		return r, err
 	}
 	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var a Article
-		if err := rows.Scan(&a.ID, &a.SourceID, &a.SourceName, &a.URL, &a.Title, &a.PublishedAt, &a.IsRead, &a.Favorite); err != nil {
+		dest := []any{&a.ID, &a.SourceID, &a.SourceName, &a.URL, &a.Title, &a.PublishedAt, &a.IsRead, &a.Favorite}
+		if history {
+			dest = append(dest, &a.LastOpenedAt)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			return r, err
 		}
 		r.Items = append(r.Items, a)
 	}
-	if q.AnchorID > 0 && q.BeforeAnchor {
+	if history && len(r.Items) > pageSize {
+		r.HasNext = true
+		r.Items = r.Items[:pageSize]
+	}
+	if !history && q.AnchorID > 0 && q.BeforeAnchor {
 		slices.Reverse(r.Items)
 	}
 	return r, rows.Err()
@@ -234,10 +263,11 @@ func (s *Store) SaveFullContent(ctx context.Context, id int64, content FullConte
 	return affected(result, err)
 }
 
-// RecordDisplay records the first display and schedules extraction if needed.
+// RecordDisplay records the display time and schedules extraction if needed.
 func (s *Store) RecordDisplay(ctx context.Context, id int64) (item Article, err error) {
 	err = s.db.QueryRowContext(ctx, `UPDATE articles.entries SET
  first_opened_at=COALESCE(first_opened_at, now()),
+ last_opened_at=GREATEST(last_opened_at, now()),
  full_next_fetch_at=CASE WHEN full_fetched_at IS NULL THEN COALESCE(full_next_fetch_at, now()) END
  WHERE id=$1 AND deleted_at IS NULL
  RETURNING id,url,(full_next_fetch_at IS NOT NULL)`, id).Scan(&item.ID, &item.URL, &item.FullContentPending)

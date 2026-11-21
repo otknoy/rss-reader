@@ -208,6 +208,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   <nav class="sort-options result-filters" aria-label="記事の絞り込み">
     <a class="button" href="{{.UnreadURL}}" data-workspace-link data-unread-filter {{if .UnreadOnly}}aria-current="true"{{end}}>未読</a>
     <a class="button" href="{{.FavoritesURL}}" data-workspace-link {{if .FavoritesOnly}}aria-current="true"{{end}}>お気に入り</a>
+    <a class="button" href="/?view=history" data-workspace-link data-history-link {{if eq .Filter "history"}}aria-current="true"{{end}}>閲覧履歴</a>
   </nav>
   <section class="feeds" aria-label="購読フィード">
     <h2>購読フィード <span class="count">{{len .Feeds}}</span></h2>
@@ -313,23 +314,25 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 <main id="workspace" class="workspace" aria-keyshortcuts="j k i f Space Shift+Space">
 <section id="list-pane" data-page="{{.Result.Page}}" class="list-pane" aria-label="記事一覧" tabindex="-1">
 <header>
-  <p class="heading">{{if eq .Filter "unread"}}未読{{else if eq .Filter "read"}}既読{{else if eq .Filter "favorites"}}お気に入り{{else}}記事一覧{{end}}</p>
+  <p class="heading">{{if eq .Filter "unread"}}未読{{else if eq .Filter "history"}}閲覧履歴{{else if eq .Filter "read"}}既読{{else if eq .Filter "favorites"}}お気に入り{{else}}記事一覧{{end}}</p>
 </header>
 {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
 
   <div class="results">
-    <h1>{{if .Query}}「{{.Query}}」の検索結果{{else if .FolderName}}{{.FolderName}}{{else if eq .Filter "unread"}}未読{{else if eq .Filter "read"}}既読{{else if eq .Filter "favorites"}}お気に入り{{else if ne .FeedID 0}}{{range .Feeds}}{{if eq $.FeedID .ID}}{{.Title}}{{end}}{{end}}{{else}}すべての記事{{end}}</h1>
+    <h1>{{if .Query}}「{{.Query}}」の検索結果{{else if .FolderName}}{{.FolderName}}{{else if eq .Filter "unread"}}未読{{else if eq .Filter "history"}}閲覧履歴{{else if eq .Filter "read"}}既読{{else if eq .Filter "favorites"}}お気に入り{{else if ne .FeedID 0}}{{range .Feeds}}{{if eq $.FeedID .ID}}{{.Title}}{{end}}{{end}}{{else}}すべての記事{{end}}</h1>
     <span class="muted">{{.Result.Total}}件</span>
   </div>
+  {{if ne .Filter "history"}}
   <nav class="sort-options" aria-label="記事の並び順">
     <a class="button" href="{{.OldestURL}}" data-workspace-link {{if not .NewestFirst}}aria-current="true"{{end}}>古い順</a>
     <a class="button" href="{{.NewestURL}}" data-workspace-link {{if .NewestFirst}}aria-current="true"{{end}}>新しい順</a>
   </nav>
+  {{end}}
   {{range .Result.Items}}
   <article class="article {{if .IsRead}}read{{end}} {{if $.Detail}}{{if eq $.Detail.ID .ID}}selected{{end}}{{end}}" data-article-id="{{.ID}}">
     <h2><a href="{{articleURL $.ListURL .ID}}" data-workspace-link {{if $.Detail}}{{if eq $.Detail.ID .ID}}aria-current="true"{{end}}{{end}}>{{.Title}}</a></h2>
     <div class="article-bottom">
-      <div class="meta"><span>{{.SourceName}}</span><time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time></div>
+      <div class="meta"><span>{{.SourceName}}</span>{{if eq $.Filter "history"}}<time datetime="{{.LastOpenedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .LastOpenedAt}}</time>{{else}}<time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time>{{end}}</div>
       <div class="actions">
         <form method="post" action="/articles/{{.ID}}/state">
           <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
@@ -343,7 +346,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
       </div>
     </div>
   </article>
-  {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「購読を管理」からフィードを登録できます。{{end}}</p>{{end}}
+  {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if eq .Filter "history"}}閲覧履歴はまだありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「購読を管理」からフィードを登録できます。{{end}}</p>{{end}}
   {{if .Next}}
   <div class="auto-paging">
     <a class="button" data-next-articles href="{{.Next}}">さらに読み込む</a>

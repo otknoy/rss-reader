@@ -184,7 +184,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	p, _ := strconv.Atoi(q.Get("page"))
 	filter := q.Get("view")
 	switch filter {
-	case "all", "unread", "read", "favorites", "unread-favorites":
+	case "all", "unread", "read", "favorites", "unread-favorites", "history":
 	default:
 		filter = "unread"
 	}
@@ -196,12 +196,19 @@ func (a *application) base(r *http.Request) (view, error) {
 	anchoredList := unreadOnly || filter == "favorites"
 	var anchorID int64
 	var beforeAnchor bool
+	var historyBefore time.Time
 	if anchoredList {
 		anchorID, _ = strconv.ParseInt(q.Get("before"), 10, 64)
 		beforeAnchor = anchorID > 0
 		if !beforeAnchor {
 			anchorID, _ = strconv.ParseInt(q.Get("after"), 10, 64)
 		}
+	}
+	if filter == "history" {
+		historyBefore, _ = time.Parse(time.RFC3339Nano, q.Get("opened_before"))
+		anchorID, _ = strconv.ParseInt(q.Get("after"), 10, 64)
+		q.Del("page")
+		q.Del("before")
 	}
 	folders, err := a.feeds.Folders(r.Context())
 	if err != nil {
@@ -214,7 +221,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	folder := q.Get("folder")
 	folderName := ""
 	var ids []int64
-	newestFirst := q.Get("sort") == "newest"
+	newestFirst := filter != "history" && q.Get("sort") == "newest"
 	if !newestFirst {
 		q.Del("sort")
 	}
@@ -240,7 +247,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 	result, err := a.search.Find(r.Context(), articles.Query{
 		Text: q.Get("q"), View: queryFilter, FeedID: feedID, FeedIDs: ids, Page: p,
-		NewestFirst: newestFirst, AnchorID: anchorID, BeforeAnchor: beforeAnchor,
+		NewestFirst: newestFirst, AnchorID: anchorID, BeforeAnchor: beforeAnchor, HistoryBefore: historyBefore,
 	})
 	if err != nil {
 		return view{}, err
@@ -263,7 +270,18 @@ func (a *application) base(r *http.Request) (view, error) {
 		back += "?" + q.Encode()
 	}
 	prev, next := "", ""
-	if anchoredList {
+	if filter == "history" {
+		q.Del("after")
+		q.Del("opened_before")
+		if result.HasNext {
+			last := result.Items[len(result.Items)-1]
+			q.Set("after", strconv.FormatInt(last.ID, 10))
+			q.Set("opened_before", last.LastOpenedAt.UTC().Format(time.RFC3339Nano))
+			next = "/?" + q.Encode()
+			q.Del("after")
+			q.Del("opened_before")
+		}
+	} else if anchoredList {
 		q.Del("page")
 		q.Del("before")
 		q.Del("after")

@@ -685,6 +685,58 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("failed transaction had partial effects: %v %v", current, err)
 		}
 	})
+	t.Run("viewing history", func(t *testing.T) {
+		for i := 1; i <= 22; i++ {
+			title := fmt.Sprintf("history-fixture-%02d", i)
+			if err := as.Save(ctx, articles.Article{Title: title, URL: "https://example.org/" + title}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Equal timestamps exercise the ID tie-breaker at the page boundary.
+		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries
+			SET last_opened_at = '2025-02-01 00:00:00+00'
+			WHERE title LIKE 'history-fixture-%' AND title <> 'history-fixture-22'`); err != nil {
+			t.Fatal(err)
+		}
+		var boundaryID, unopenedID int64
+		for title, id := range map[string]*int64{"history-fixture-02": &boundaryID, "history-fixture-22": &unopenedID} {
+			if err := owner.QueryRowContext(ctx, "SELECT id FROM articles.entries WHERE title=$1", title).Scan(id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := as.MarkRead(ctx, []int64{unopenedID}); err != nil {
+			t.Fatal(err)
+		}
+		historyURL := "/?q=history-fixture&view=history"
+		first := request("GET", historyURL, nil)
+		firstBody := first.Body.String()
+		next := regexp.MustCompile(`data-next-articles href="([^"]+)"`).FindStringSubmatch(firstBody)
+		if first.Code != http.StatusOK || len(next) != 2 ||
+			!strings.Contains(firstBody, ">history-fixture-02</a>") ||
+			strings.Contains(firstBody, ">history-fixture-01</a>") ||
+			strings.Contains(firstBody, ">history-fixture-22</a>") {
+			t.Fatalf("unexpected first history page: status %d", first.Code)
+		}
+		if _, err := as.RecordDisplay(ctx, boundaryID); err != nil {
+			t.Fatal(err)
+		}
+		second := request("GET", strings.ReplaceAll(next[1], "&amp;", "&"), nil)
+		if second.Code != http.StatusOK || !strings.Contains(second.Body.String(), ">history-fixture-01</a>") ||
+			strings.Contains(second.Body.String(), ">history-fixture-02</a>") {
+			t.Fatalf("unexpected second history page after reopening the boundary: status %d", second.Code)
+		}
+		refreshed := request("GET", historyURL, nil)
+		rows := regexp.MustCompile(`<h2><a [^>]+>(history-fixture-[0-9]+)</a></h2>`).FindAllStringSubmatch(refreshed.Body.String(), -1)
+		if refreshed.Code != http.StatusOK || len(rows) != 20 || rows[0][1] != "history-fixture-02" {
+			t.Fatalf("unexpected history order after reopening: status %d, rows %v", refreshed.Code, rows)
+		}
+		if err := as.Delete(ctx, boundaryID); err != nil {
+			t.Fatal(err)
+		}
+		if deleted := request("GET", historyURL, nil); deleted.Code != http.StatusOK || strings.Contains(deleted.Body.String(), ">history-fixture-02</a>") {
+			t.Fatalf("deleted article appears in history: status %d", deleted.Code)
+		}
+	})
 	t.Run("article sort order", func(t *testing.T) {
 		for i := 1; i <= 21; i++ {
 			title := fmt.Sprintf("sort-fixture-%02d", i)

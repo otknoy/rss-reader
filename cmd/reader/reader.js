@@ -3,7 +3,7 @@
 
   let pending;
   let contentPollTimer;
-  let contentRequestedFor = "";
+  let displayRequest;
   let navigationGeneration = 0;
   let currentContext = contextKey(location.href);
   let mobileListScroll = 0;
@@ -150,6 +150,7 @@
         }
         nextSidebar.scrollTop = sidebarScroll;
       }
+      if (oldID !== nextID) displayRequest = undefined;
       oldReader.replaceWith(nextReader);
       if (options.keepReaderScroll && oldID === nextID) nextReader.scrollTop = readerScroll;
       document.querySelector(".shell").classList.toggle("has-detail", Boolean(nextID));
@@ -187,12 +188,9 @@
   function scheduleContentCheck() {
     clearTimeout(contentPollTimer);
     const reader = document.querySelector(".reader[data-reading-id]");
-    if (!reader) {
-      contentRequestedFor = "";
-      return;
-    }
+    if (!reader) return;
     const id = reader.dataset.readingId;
-    const requestNow = contentRequestedFor !== id;
+    const requestNow = !displayRequest || !displayRequest.complete;
     const fetched = reader.dataset.contentFetched === "true";
     if (!requestNow && fetched) return;
     const hadError = reader.dataset.contentError === "true";
@@ -200,16 +198,26 @@
 
     async function checkContent() {
       try {
-        const response = await fetch(`/articles/${id}/content-status`, {
-          method: requestNow ? "POST" : "GET",
-          credentials: "same-origin",
-          headers: { Accept: "application/json" },
-        });
+        const readStatus = async (method) => {
+          const response = await fetch(`/articles/${id}/content-status`, {
+            method, credentials: "same-origin", headers: { Accept: "application/json" },
+          });
+          if (!response.ok) throw new Error();
+          return response.json();
+        };
+        if (requestNow && !displayRequest) {
+          const request = { complete: false };
+          displayRequest = request;
+          request.result = readStatus("POST").then(status => {
+            request.complete = true;
+            return status;
+          }, error => {
+            if (displayRequest === request) displayRequest = undefined;
+            throw error;
+          });
+        }
+        const status = await (requestNow ? displayRequest.result : readStatus("GET"));
         if (generation !== navigationGeneration || selectedID() !== id) return;
-        if (!response.ok) throw new Error();
-        const status = await response.json();
-        if (generation !== navigationGeneration || selectedID() !== id) return;
-        contentRequestedFor = id;
         if ((!status.pending && !fetched) || Boolean(status.error) !== hadError) {
           await navigate(location.href, { history: "none", keepReaderScroll: true });
         } else {
@@ -361,6 +369,7 @@
       }
     }
 
+    displayRequest = undefined;
     document.querySelector("#reader-pane").replaceWith(reader);
     document.querySelector(".shell").classList.add("has-detail");
     updateSelectedRows(id, url.pathname + url.search);
@@ -675,7 +684,7 @@
     if (new URL(link.href).origin !== location.origin) return;
     event.preventDefault();
     if (!row) {
-      await navigate(link.href);
+      await navigate(link.href, { refreshList: link.hasAttribute("data-history-link") });
       return;
     }
     if (pageMovePending || favoritePending) return;
