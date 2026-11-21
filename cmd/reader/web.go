@@ -252,6 +252,37 @@ func paginationLinks(q url.Values, filter string, anchoredList bool, anchorID in
 	return prev, next
 }
 
+func listControlLinks(q url.Values, filter string, unreadOnly bool) (favoritesOnly bool, unreadURL, favoritesURL, oldestURL, newestURL string) {
+	favoritesOnly = filter == "favorites" || filter == "unread-favorites"
+	filterURL := func(unread, favorite bool) string {
+		switch {
+		case unread && favorite:
+			q.Set("view", "unread-favorites")
+		case unread:
+			q.Set("view", "unread")
+		case favorite:
+			q.Set("view", "favorites")
+		default:
+			q.Set("view", "all")
+		}
+		if len(q) == 0 {
+			return "/"
+		}
+		return "/?" + q.Encode()
+	}
+	unreadURL = filterURL(!unreadOnly, favoritesOnly)
+	favoritesURL = filterURL(unreadOnly, !favoritesOnly)
+	q.Set("view", filter)
+	q.Del("sort")
+	oldestURL = "/"
+	if len(q) > 0 {
+		oldestURL += "?" + q.Encode()
+	}
+	q.Set("sort", "newest")
+	newestURL = "/?" + q.Encode()
+	return favoritesOnly, unreadURL, favoritesURL, oldestURL, newestURL
+}
+
 func (a *application) base(r *http.Request) (view, error) {
 	list, err := a.feeds.List(r.Context())
 	if err != nil {
@@ -334,33 +365,7 @@ func (a *application) base(r *http.Request) (view, error) {
 		back += "?" + q.Encode()
 	}
 	prev, next := paginationLinks(q, filter, anchoredList, pagination.anchorID, result)
-	favoritesOnly := filter == "favorites" || filter == "unread-favorites"
-	filterURL := func(unread, favorite bool) string {
-		switch {
-		case unread && favorite:
-			q.Set("view", "unread-favorites")
-		case unread:
-			q.Set("view", "unread")
-		case favorite:
-			q.Set("view", "favorites")
-		default:
-			q.Set("view", "all")
-		}
-		if len(q) == 0 {
-			return "/"
-		}
-		return "/?" + q.Encode()
-	}
-	unreadURL := filterURL(!unreadOnly, favoritesOnly)
-	favoritesURL := filterURL(unreadOnly, !favoritesOnly)
-	q.Set("view", filter)
-	q.Del("sort")
-	oldestURL := "/"
-	if len(q) > 0 {
-		oldestURL += "?" + q.Encode()
-	}
-	q.Set("sort", "newest")
-	newestURL := "/?" + q.Encode()
+	favoritesOnly, unreadURL, favoritesURL, oldestURL, newestURL := listControlLinks(q, filter, unreadOnly)
 	message := ""
 	switch r.URL.Query().Get("message") {
 	case "feed-queued":
