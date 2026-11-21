@@ -205,6 +205,53 @@ func parseListPagination(q url.Values, filter string, anchoredList bool) listPag
 	return pagination
 }
 
+// paginationLinks clears pagination parameters from q for subsequent links.
+func paginationLinks(q url.Values, filter string, anchoredList bool, anchorID int64, result articles.Result) (string, string) {
+	prev, next := "", ""
+	if filter == "history" {
+		q.Del("after")
+		q.Del("opened_before")
+		if result.HasNext {
+			last := result.Items[len(result.Items)-1]
+			q.Set("after", strconv.FormatInt(last.ID, 10))
+			q.Set("opened_before", last.LastOpenedAt.UTC().Format(time.RFC3339Nano))
+			next = "/?" + q.Encode()
+			q.Del("after")
+			q.Del("opened_before")
+		}
+	} else if anchoredList {
+		q.Del("page")
+		q.Del("before")
+		q.Del("after")
+		if len(result.Items) > 0 {
+			if result.HasPrevious {
+				q.Set("before", strconv.FormatInt(result.Items[0].ID, 10))
+				prev = "/?" + q.Encode()
+				q.Del("before")
+			}
+			if result.HasNext {
+				q.Set("after", strconv.FormatInt(result.Items[len(result.Items)-1].ID, 10))
+				next = "/?" + q.Encode()
+				q.Del("after")
+			}
+		} else if anchorID > 0 && result.Total > 0 {
+			// Concurrent changes can empty an anchored page. Offer the beginning of the list.
+			prev = "/?" + q.Encode()
+		}
+	} else {
+		if result.HasPrevious {
+			q.Set("page", strconv.Itoa(result.Page-1))
+			prev = "/?" + q.Encode()
+		}
+		if result.HasNext {
+			q.Set("page", strconv.Itoa(result.Page+1))
+			next = "/?" + q.Encode()
+		}
+	}
+	q.Del("page")
+	return prev, next
+}
+
 func (a *application) base(r *http.Request) (view, error) {
 	list, err := a.feeds.List(r.Context())
 	if err != nil {
@@ -286,48 +333,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	if len(q) > 0 {
 		back += "?" + q.Encode()
 	}
-	prev, next := "", ""
-	if filter == "history" {
-		q.Del("after")
-		q.Del("opened_before")
-		if result.HasNext {
-			last := result.Items[len(result.Items)-1]
-			q.Set("after", strconv.FormatInt(last.ID, 10))
-			q.Set("opened_before", last.LastOpenedAt.UTC().Format(time.RFC3339Nano))
-			next = "/?" + q.Encode()
-			q.Del("after")
-			q.Del("opened_before")
-		}
-	} else if anchoredList {
-		q.Del("page")
-		q.Del("before")
-		q.Del("after")
-		if len(result.Items) > 0 {
-			if result.HasPrevious {
-				q.Set("before", strconv.FormatInt(result.Items[0].ID, 10))
-				prev = "/?" + q.Encode()
-				q.Del("before")
-			}
-			if result.HasNext {
-				q.Set("after", strconv.FormatInt(result.Items[len(result.Items)-1].ID, 10))
-				next = "/?" + q.Encode()
-				q.Del("after")
-			}
-		} else if pagination.anchorID > 0 && result.Total > 0 {
-			// Concurrent changes can empty an anchored page. Offer the beginning of the list.
-			prev = "/?" + q.Encode()
-		}
-	} else {
-		if result.HasPrevious {
-			q.Set("page", strconv.Itoa(result.Page-1))
-			prev = "/?" + q.Encode()
-		}
-		if result.HasNext {
-			q.Set("page", strconv.Itoa(result.Page+1))
-			next = "/?" + q.Encode()
-		}
-	}
-	q.Del("page")
+	prev, next := paginationLinks(q, filter, anchoredList, pagination.anchorID, result)
 	favoritesOnly := filter == "favorites" || filter == "unread-favorites"
 	filterURL := func(unread, favorite bool) string {
 		switch {
