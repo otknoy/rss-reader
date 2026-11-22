@@ -51,6 +51,7 @@ summary { cursor: pointer; }
 .shortcuts-dialog dd { margin: 0; }
 .article[aria-busy="true"] { opacity: .6; }
 .workspace-error { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: calc(100vw - 32px); padding: 12px 18px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: #f0a69c; }
+#bulk-read-toast:not(:empty) { position: fixed; top: 16px; right: 16px; z-index: 5; max-width: calc(100vw - 32px); padding: 12px 18px; border: 1px solid var(--accent); border-radius: 5px; background: var(--surface); color: var(--text); }
 .list-pane .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
 .list-pane .article h2 { font-size: 14px; }
 .heading { margin: 0; font-size: 18px; font-weight: 500; }
@@ -147,6 +148,9 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .empty { padding: 48px 0; text-align: center; color: var(--muted); }
 .auto-paging { margin-top: 24px; text-align: center; }
 .bulk-read { margin-top: 24px; text-align: center; }
+.bulk-read [aria-disabled="true"] { opacity: .6; cursor: default; }
+.bulk-read [data-bulk-read-status]:not(:empty) { display: block; margin-top: 8px; }
+.bulk-read .keyboard-cursor { outline: 2px solid var(--accent); outline-offset: 3px; }
 .auto-paging + .bulk-read { display: none; }
 .reader { max-width: 720px; margin: 24px auto; }
 .reader h1 { font-size: 26px; line-height: 1.65; margin: 14px 0 20px; overflow-wrap: anywhere; }
@@ -372,7 +376,8 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <dt><kbd>/</kbd></dt><dd>検索窓にフォーカス</dd>
     <dt><kbd>?</kbd></dt><dd>ショートカット一覧を開く</dd>
     <dt><kbd>Esc</kbd></dt><dd>ショートカット一覧を閉じる</dd>
-    <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>次・前の記事を開いて既読にする</dd>
+    <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>次・前の記事を開いて既読にする。末尾のボタンも選択できます</dd>
+    <dt><kbd>Enter</kbd></dt><dd>選択中の「読み込んだ記事をすべて既読にする」を実行</dd>
     <dt><kbd>Shift + j / k</kbd></dt><dd>検索範囲を切り替え</dd>
     <dt><kbd>i</kbd></dt><dd>元記事を別タブで開く</dd>
     <dt><kbd>f</kbd></dt><dd>お気に入りを切り替え</dd>
@@ -380,6 +385,7 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <dt><kbd>Space</kbd> / <kbd>Shift + Space</kbd></dt><dd>本文を下・上へスクロール</dd>
   </dl>
 </dialog>
+<div id="bulk-read-toast" role="status" aria-atomic="true"></div>
 </body>
 </html>
 

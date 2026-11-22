@@ -5,6 +5,7 @@
   let navigationGeneration = 0;
   let currentContext = contextKey(location.href);
   let mobileListScroll = 0;
+  const bulkReadCursor = Symbol("bulkRead");
   let keyboardCursorID = selectedID();
   let pageMovePending = false;
   let favoritePending = false;
@@ -89,20 +90,14 @@
 
       const filter = new URL(response.url).searchParams.get("view");
       const keepArticleList = sameContext && filter !== "read" &&
-        (options.markedReadIDs || change?.kind === "read" || change?.kind === "favorite");
+        (change?.kind === "read" || change?.kind === "favorite");
       const refreshWorkspace = !sameContext || options.refreshList;
       if (keepArticleList) {
-        if (options.markedReadIDs) {
-          for (const row of articleRows()) {
-            if (options.markedReadIDs.has(row.dataset.articleId)) updateReadRow(row, true);
-          }
-        } else {
-          const row = articleRows().find(item => item.dataset.articleId === change.id);
-          if (row && change.kind === "read") updateReadRow(row, change.value === "true");
-          if (row && change.kind === "favorite") {
-            if (change.value === "true") updateFavoriteButton(row, true);
-            else row.remove();
-          }
+        const row = articleRows().find(item => item.dataset.articleId === change.id);
+        if (row && change.kind === "read") updateReadRow(row, change.value === "true");
+        if (row && change.kind === "favorite") {
+          if (change.value === "true") updateFavoriteButton(row, true);
+          else row.remove();
         }
         oldList.querySelector(".results .muted").textContent = nextList.querySelector(".results .muted").textContent;
       } else if (refreshWorkspace) {
@@ -143,6 +138,8 @@
       const rows = articleRows();
       if (!sameContext || nextID !== oldID) {
         setCursor(rows.find(row => row.dataset.articleId === nextID));
+      } else if (keyboardCursorID === bulkReadCursor) {
+        setCursor(document.querySelector("#list-pane [data-mark-loaded-read]"));
       } else {
         setCursor(rows.find(row => row.dataset.articleId === keyboardCursorID) || (cursorIndex >= 0 ? rows[Math.min(cursorIndex, rows.length - 1)] : null));
       }
@@ -271,33 +268,59 @@
     return Array.from(document.querySelectorAll("#list-pane [data-article-id]"));
   }
 
+  function updateBulkReadAvailability(button, rows) {
+    if (!button) return;
+    const hasUnread = rows.some(row => !row.classList.contains("read"));
+    button.setAttribute("aria-disabled", String(!hasUnread));
+  }
+
   async function markLoadedRead(button) {
-    if (pageMovePending || favoritePending || button.disabled) return;
+    if (pageMovePending || favoritePending || button.getAttribute("aria-disabled") === "true") return;
     const ids = new Set(articleRows().filter(row => !row.classList.contains("read")).map(row => row.dataset.articleId));
+    if (!ids.size) return;
     const status = button.parentElement.querySelector("[data-bulk-read-status]");
-    if (!ids.size) {
-      status.textContent = "読み込んだ記事はすべて既読です。";
-      return;
-    }
-    const body = new URLSearchParams({ return_to: location.pathname + location.search });
+    const body = new URLSearchParams();
     for (const id of ids) body.append("id", id);
-    button.disabled = true;
+    button.setAttribute("aria-disabled", "true");
     pageMovePending = true;
     status.textContent = "既読にしています…";
     try {
-      const saved = await navigate("/articles/mark-read", {
+      document.querySelector(".workspace-error")?.remove();
+      const response = await fetch("/articles/mark-read", {
         method: "POST",
         body,
-        markedReadIDs: ids,
-        history: "replace",
-        refreshList: true,
-        keepReaderScroll: true,
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
       });
-      status.textContent = saved ? "読み込んだ記事をすべて既読にしました。" : "";
+      if (!response.ok) throw new Error();
+      const { count } = await response.json();
+      if (!Number.isSafeInteger(count) || count < 0) throw new Error();
+      // A fragment-only change on the home page would skip the reload.
+      const home = new URL("/", location.href);
+      home.hash = `marked-read=${count}`;
+      if (location.pathname === "/" && !location.search) {
+        history.replaceState(history.state, "", home);
+        location.reload();
+      } else {
+        location.assign(home);
+      }
+    } catch {
+      showError("記事を既読にできませんでした。もう一度お試しください。");
     } finally {
-      button.disabled = false;
+      status.textContent = "";
+      updateBulkReadAvailability(button, articleRows());
       pageMovePending = false;
     }
+  }
+
+  function showBulkReadToast() {
+    if (location.pathname !== "/" || location.search) return;
+    const match = /^#marked-read=(\d+)$/.exec(location.hash);
+    if (!match) return;
+    history.replaceState(history.state, "", "/");
+    const toast = document.querySelector("#bulk-read-toast");
+    toast.textContent = `${match[1]}件の記事を既読にしました。`;
+    setTimeout(() => { toast.textContent = ""; }, 5000);
   }
 
   function scrollToCursor(rows, index) {
@@ -325,14 +348,23 @@
     else if (titles[last].bottom > bottom) pane.scrollTop += Math.ceil(titles[last].bottom - bottom);
   }
 
-  function setCursor(row, scroll = false) {
+  function setCursor(item, scroll = false) {
     const previous = keyboardCursorID;
-    keyboardCursorID = row?.dataset.articleId || "";
+    const bulkRead = document.querySelector("#list-pane [data-mark-loaded-read]");
+    const onBulkRead = Boolean(bulkRead && item === bulkRead);
+    keyboardCursorID = onBulkRead ? bulkReadCursor : item?.dataset.articleId || "";
     const rows = articleRows();
-    for (const item of rows) item.classList.toggle("keyboard-cursor", item === row);
-    if (scroll && row) scrollToCursor(rows, rows.indexOf(row));
+    for (const row of rows) row.classList.toggle("keyboard-cursor", row === item);
+    updateBulkReadAvailability(bulkRead, rows);
+    bulkRead?.classList.toggle("keyboard-cursor", onBulkRead);
+    if (scroll && onBulkRead) {
+      bulkRead.focus({ preventScroll: true });
+      bulkRead.scrollIntoView({ block: "nearest" });
+    } else if (scroll && item) scrollToCursor(rows, rows.indexOf(item));
     const status = document.querySelector("#keyboard-status");
-    if (status && previous !== keyboardCursorID) status.textContent = row?.querySelector("h2")?.textContent || "";
+    if (status && previous !== keyboardCursorID) {
+      status.textContent = onBulkRead ? bulkRead.textContent : item?.querySelector("h2")?.textContent || "";
+    }
   }
 
   function updateSelectedRows(id, returnTo) {
@@ -448,6 +480,7 @@
         const nextHref = next?.querySelector("a").getAttribute("href");
         if (nextHref && new URL(nextHref, response.url).href !== link.href) footer.replaceWith(next);
         else footer.remove();
+        updateBulkReadAvailability(document.querySelector("#list-pane [data-mark-loaded-read]"), articleRows());
         observeNextPage();
       } catch {
         if (link.isConnected) {
@@ -479,8 +512,10 @@
     try {
       const list = document.querySelector("#list-pane");
       let rows = articleRows();
+      const onBulkRead = keyboardCursorID === bulkReadCursor;
+      if (onBulkRead && delta > 0) return;
       const index = rows.findIndex(row => row.dataset.articleId === keyboardCursorID);
-      const next = index < 0 ? 0 : index + delta;
+      const next = onBulkRead ? rows.length - 1 : index < 0 ? 0 : index + delta;
       const nextPage = list.querySelector("[data-next-articles]");
       const preload = next >= 0 && rows.length - next <= 5
         ? pagination.loadNextPage(nextPage)
@@ -491,8 +526,17 @@
         rows = articleRows();
       }
       const row = rows[next];
-      if (!row) return;
-      await openArticle(row, row.querySelector("a[data-workspace-link]").href);
+      if (row) {
+        await openArticle(row, row.querySelector("a[data-workspace-link]").href);
+      } else if (delta > 0 && !list.querySelector("[data-next-articles]")) {
+        const bulkRead = list.querySelector("[data-mark-loaded-read]");
+        if (!bulkRead) return;
+        if (!list.getClientRects().length) {
+          const close = document.querySelector(".reader-toolbar [data-workspace-link]");
+          if (!close || !await navigate(close.href) || !list.isConnected) return;
+        }
+        setCursor(bulkRead, true);
+      }
     } finally {
       pageMovePending = false;
     }
@@ -518,12 +562,13 @@
   }
 
   function openOriginal() {
+    if (keyboardCursorID === bulkReadCursor) return;
     const scope = document.querySelector(".reader") || articleRows().find(row => row.dataset.articleId === keyboardCursorID);
     scope?.querySelector("[data-original-link]")?.click();
   }
 
   async function toggleCursorFavorite() {
-    if (favoritePending || pageMovePending) return;
+    if (favoritePending || pageMovePending || keyboardCursorID === bulkReadCursor) return;
     const row = articleRows().find(item => item.dataset.articleId === keyboardCursorID);
     const scope = row || document.querySelector(".reader");
     const form = scope && Array.from(scope.querySelectorAll("form")).find(item => item.querySelector('input[name="kind"]')?.value === "favorite");
@@ -558,7 +603,13 @@
     const target = event.target instanceof Element ? event.target : document.activeElement;
     if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || document.querySelector("dialog[open]")) return;
-    if (event.key === "/") {
+    if (!event.shiftKey && event.key === "Enter" && keyboardCursorID === bulkReadCursor) {
+      const button = document.querySelector("#list-pane [data-mark-loaded-read]");
+      const control = target?.closest('button, summary, a, [role="button"]');
+      if (!button?.getClientRects().length || (control && control !== button)) return;
+      event.preventDefault();
+      if (!event.repeat) void markLoadedRead(button);
+    } else if (event.key === "/") {
       event.preventDefault();
       if (!event.repeat) void focusSearch();
     } else if (event.key === "?") {
@@ -818,4 +869,5 @@
   folders.restoreFolders(document.querySelector(".sidebar"));
   pagination.observeNextPage();
   contentStatus.scheduleContentCheck();
+  showBulkReadToast();
 })();

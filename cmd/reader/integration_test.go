@@ -417,7 +417,7 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 		queuedID := matching.Items[0].ID
 		freshStore := articles.New(connect(os.Getenv("ARTICLES_DATABASE_URL")))
-		if err := as.MarkRead(ctx, []int64{queuedID}); err != nil {
+		if _, err := as.MarkRead(ctx, []int64{queuedID}); err != nil {
 			t.Fatal(err)
 		}
 		if w := request("GET", fmt.Sprintf("/articles/%d", queuedID), nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "RSSの要約") {
@@ -752,7 +752,7 @@ func TestPrototypeIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := as.MarkRead(ctx, []int64{unopenedID}); err != nil {
+		if _, err := as.MarkRead(ctx, []int64{unopenedID}); err != nil {
 			t.Fatal(err)
 		}
 		historyURL := "/?q=history-fixture&view=history"
@@ -871,9 +871,19 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 
 		saveArticle("new-arrival")
-		form := url.Values{"return_to": {path}, "id": {matches[0][1], matches[1][1]}}
-		if w := request("POST", "/articles/mark-read", form); w.Code != http.StatusSeeOther {
-			t.Fatalf("bulk read returned %d: %s", w.Code, w.Body.String())
+		form := url.Values{"id": {matches[0][1], matches[1][1], matches[1][1]}}
+		for _, want := range []int64{2, 0} {
+			req := httptest.NewRequest("POST", "/articles/mark-read", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Accept", "application/json")
+			w := httptest.NewRecorder()
+			app.routes().ServeHTTP(w, req)
+			var result struct {
+				Count int64 `json:"count"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &result); w.Code != http.StatusOK || err != nil || result.Count != want {
+				t.Fatalf("bulk read count: status=%d, body=%s, want=%d", w.Code, w.Body.String(), want)
+			}
 		}
 		after := request("GET", path, nil)
 		if after.Code != http.StatusOK ||

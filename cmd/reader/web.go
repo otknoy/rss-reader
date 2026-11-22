@@ -592,8 +592,16 @@ func (a *application) markRead(w http.ResponseWriter, r *http.Request) {
 		}
 		ids[i] = n
 	}
-	if err := a.articles.MarkRead(r.Context(), ids); err != nil {
+	count, err := a.articles.MarkRead(r.Context(), ids)
+	if err != nil {
 		fail(w, err)
+		return
+	}
+	if r.Header.Get("Accept") == "application/json" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(struct {
+			Count int64 `json:"count"`
+		}{count})
 		return
 	}
 	redirect(w, r, "")
