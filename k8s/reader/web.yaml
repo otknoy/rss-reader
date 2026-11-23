@@ -40,7 +40,7 @@ spec:
         - name: ghcr-pull
       containers:
         - name: reader
-          image: ghcr.io/otknoy/rss-reader:20261122022837
+          image: ghcr.io/otknoy/rss-reader:20261123135947
           args: ["web"]
           securityContext:
             allowPrivilegeEscalation: false
