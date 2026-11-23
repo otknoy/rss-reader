@@ -26,12 +26,14 @@ func Run(ctx context.Context, db *sql.DB) (err error) {
 			err = errors.Join(err, rollbackErr)
 		}
 	}()
+
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(7221901)`); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS public.schema_migrations (name text PRIMARY KEY)`); err != nil {
 		return err
 	}
+
 	names, err := fs.Glob(files, "*.sql")
 	if err != nil {
 		return err
@@ -45,6 +47,7 @@ func Run(ctx context.Context, db *sql.DB) (err error) {
 		if exists {
 			continue
 		}
+
 		body, err := files.ReadFile(name)
 		if err != nil {
 			return err
@@ -56,5 +59,6 @@ func Run(ctx context.Context, db *sql.DB) (err error) {
 			return err
 		}
 	}
+
 	return tx.Commit()
 }

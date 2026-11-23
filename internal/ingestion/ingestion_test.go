@@ -8,7 +8,20 @@ import (
 )
 
 func TestPublicIP(t *testing.T) {
-	for _, raw := range []string{"127.0.0.1", "::1", "::ffff:127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.100.100.200", "0.0.0.0", "fc00::1", "fe80::1", "2001:db8::1"} {
+	for _, raw := range []string{
+		"127.0.0.1",
+		"::1",
+		"::ffff:127.0.0.1",
+		"10.0.0.1",
+		"172.16.0.1",
+		"192.168.1.1",
+		"169.254.169.254",
+		"100.100.100.200",
+		"0.0.0.0",
+		"fc00::1",
+		"fe80::1",
+		"2001:db8::1",
+	} {
 		if publicIP(netip.MustParseAddr(raw)) {
 			t.Errorf("accepted private/reserved IP %s", raw)
 		}
@@ -42,7 +55,10 @@ func TestParseFeeds(t *testing.T) {
 			t.Fatalf("title=%s items=%v", title, items)
 		}
 		a := items[0]
-		if a.ExternalID != "stable-id" || a.SourceID != 7 || a.URL != "https://example.com/entry" || a.BodyText != "日本語検索" {
+		if a.ExternalID != "stable-id" ||
+			a.SourceID != 7 ||
+			a.URL != "https://example.com/entry" ||
+			a.BodyText != "日本語検索" {
 			t.Fatalf("unexpected article: %+v", a)
 		}
 	}

@@ -80,6 +80,7 @@ func run() error {
 	if len(os.Args) > 2 && (command != "fetch" || len(os.Args) != 3 || os.Args[2] != "--due") {
 		return errors.New("only fetch accepts --due")
 	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	startup, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -92,6 +93,7 @@ func run() error {
 		defer closeResource(db)
 		return migrations.Run(startup, db)
 	}
+
 	fdb, err := openDB(startup, "FEEDS_DATABASE_URL")
 	if err != nil {
 		return err
@@ -102,6 +104,7 @@ func run() error {
 		return err
 	}
 	defer closeResource(adb)
+
 	fs, as := feeds.New(fdb), articles.New(adb)
 	interval, err := refreshInterval(os.Getenv("FETCH_INTERVAL"))
 	if err != nil {
@@ -115,6 +118,7 @@ func run() error {
 		}
 		return errors.Join(feedErr, fetcher.RefreshFullContent(ctx, as))
 	}
+
 	if command == "fetch" {
 		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
@@ -130,6 +134,7 @@ func run() error {
 		}
 		return err
 	}
+
 	enabled, err := autoRefreshEnabled(os.Getenv("AUTO_REFRESH"))
 	if err != nil {
 		return err
@@ -138,19 +143,38 @@ func run() error {
 	workerDone := make(chan struct{})
 	if enabled {
 		log.Printf("automatic feed refresh enabled: base interval=%s, due checks every 1m", interval)
-		go func() { defer close(workerDone); pollFeeds(workerCtx, scheduledRefresh) }()
+		go func() {
+			defer close(workerDone)
+			pollFeeds(workerCtx, scheduledRefresh)
+		}()
 	} else {
 		close(workerDone)
 	}
-	defer func() { stopWorker(); <-workerDone }()
+	defer func() {
+		stopWorker()
+		<-workerDone
+	}()
+
 	app := &application{feeds: fs, articles: as, search: search.New(as), fetcher: fetcher}
 	addr := os.Getenv("LISTEN_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
-	server := &http.Server{Addr: addr, Handler: app.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 150 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           app.routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      150 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 	done := make(chan error, 1)
-	go func() { log.Printf("RSS Reader listening on %s", addr); done <- server.ListenAndServe() }()
+	go func() {
+		log.Printf("RSS Reader listening on %s", addr)
+		done <- server.ListenAndServe()
+	}()
+
 	select {
 	case err := <-done:
 		if errors.Is(err, http.ErrServerClosed) {

@@ -69,7 +69,12 @@ func (s *Store) DeleteFolder(ctx context.Context, id int64) error {
 
 // Move changes a subscription folder, with zero meaning unfiled.
 func (s *Store) Move(ctx context.Context, id, folder int64) error {
-	return folderMutation(s.db.ExecContext(ctx, "UPDATE feeds.subscriptions SET folder_id=NULLIF($2::bigint,0) WHERE id=$1 AND active", id, folder))
+	return folderMutation(s.db.ExecContext(
+		ctx,
+		"UPDATE feeds.subscriptions SET folder_id=NULLIF($2::bigint,0) WHERE id=$1 AND active",
+		id,
+		folder,
+	))
 }
 
 func folderMutation(result sql.Result, err error) error {

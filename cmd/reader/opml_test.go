@@ -41,7 +41,12 @@ func TestOPMLUploadValidation(t *testing.T) {
 		{"invalid XML", "<opml><body>", http.StatusBadRequest},
 		{"wrong file type", "<html><body/></html>", http.StatusBadRequest},
 		{"oversized file", strings.Repeat("x", feeds.MaxOPMLBytes+1), http.StatusRequestEntityTooLarge},
-		{"oversized request", strings.Repeat("x", feeds.MaxOPMLBytes+(128<<10)), http.StatusRequestEntityTooLarge},
+
+		{
+			"oversized request",
+			strings.Repeat("x", feeds.MaxOPMLBytes+(128<<10)),
+			http.StatusRequestEntityTooLarge,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()

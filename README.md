@@ -16,7 +16,7 @@ Composeの初期設定ではローカルからアクセスできます。アプ�
 
 ## 開発
 
-[開発・検証手順](AGENTS.md) · [設計方針](docs/architecture.md)
+[開発・検証手順](AGENTS.md) · [設計方針](docs/architecture.md) · [コーディング規約](docs/coding-style.md)
 
 ## Dockerイメージの公開
 

@@ -5,10 +5,12 @@
   let navigationGeneration = 0;
   let currentContext = contextKey(location.href);
   let mobileListScroll = 0;
+
   const bulkReadCursor = Symbol("bulkRead");
   let keyboardCursorID = selectedID();
   let pageMovePending = false;
   let favoritePending = false;
+
   function contextKey(raw) {
     const url = new URL(raw, location.href);
     for (const key of ["article", "message", "added", "existing", "skipped"]) url.searchParams.delete(key);
@@ -59,6 +61,7 @@
         if (controller.signal.aborted) return;
         return applyOpenedArticle(options.openURL, result);
       }
+
       const html = await response.text();
       if (controller.signal.aborted) return;
       const nextContext = contextKey(response.url);
@@ -73,6 +76,7 @@
         }
         return;
       }
+
       const next = new DOMParser().parseFromString(html, "text/html");
       const nextReader = next.querySelector("#reader-pane");
       const nextList = next.querySelector("#list-pane");
@@ -141,7 +145,10 @@
       } else if (keyboardCursorID === bulkReadCursor) {
         setCursor(document.querySelector("#list-pane [data-mark-loaded-read]"));
       } else {
-        setCursor(rows.find(row => row.dataset.articleId === keyboardCursorID) || (cursorIndex >= 0 ? rows[Math.min(cursorIndex, rows.length - 1)] : null));
+        setCursor(
+          rows.find(row => row.dataset.articleId === keyboardCursorID) ||
+            (cursorIndex >= 0 ? rows[Math.min(cursorIndex, rows.length - 1)] : null),
+        );
       }
 
       currentContext = nextContext;
@@ -261,7 +268,11 @@
 
   function stateChange(form, data) {
     const id = form.closest("[data-article-id], [data-reading-id]")?.dataset;
-    return { id: id?.articleId || id?.readingId, kind: data.get("kind"), value: data.get("value") };
+    return {
+      id: id?.articleId || id?.readingId,
+      kind: data.get("kind"),
+      value: data.get("value"),
+    };
   }
 
   function articleRows() {
@@ -336,12 +347,14 @@
     const start = Math.max(0, index - 5);
     const titles = rows.slice(start, index + 6).map(item => item.querySelector("h2").getBoundingClientRect());
     const current = index - start;
+
     let first = 0;
     let last = titles.length - 1;
     while (titles[last].bottom - titles[first].top > pane.clientHeight && first < last) {
       if (current - first > last - current) first++;
       else last--;
     }
+
     const top = pane.getBoundingClientRect().top + pane.clientTop;
     const bottom = top + pane.clientHeight;
     if (titles[first].top < top) pane.scrollTop += Math.floor(titles[first].top - top);
@@ -353,14 +366,17 @@
     const bulkRead = document.querySelector("#list-pane [data-mark-loaded-read]");
     const onBulkRead = Boolean(bulkRead && item === bulkRead);
     keyboardCursorID = onBulkRead ? bulkReadCursor : item?.dataset.articleId || "";
+
     const rows = articleRows();
     for (const row of rows) row.classList.toggle("keyboard-cursor", row === item);
     updateBulkReadAvailability(bulkRead, rows);
     bulkRead?.classList.toggle("keyboard-cursor", onBulkRead);
+
     if (scroll && onBulkRead) {
       bulkRead.focus({ preventScroll: true });
       bulkRead.scrollIntoView({ block: "nearest" });
     } else if (scroll && item) scrollToCursor(rows, rows.indexOf(item));
+
     const status = document.querySelector("#keyboard-status");
     if (status && previous !== keyboardCursorID) {
       status.textContent = onBulkRead ? bulkRead.textContent : item?.querySelector("h2")?.textContent || "";
@@ -572,7 +588,9 @@
     if (favoritePending || pageMovePending || keyboardCursorID === bulkReadCursor) return;
     const row = articleRows().find(item => item.dataset.articleId === keyboardCursorID);
     const scope = row || document.querySelector(".reader");
-    const form = scope && Array.from(scope.querySelectorAll("form")).find(item => item.querySelector('input[name="kind"]')?.value === "favorite");
+    const form = scope && Array.from(scope.querySelectorAll("form")).find(
+      item => item.querySelector('input[name="kind"]')?.value === "favorite",
+    );
     if (!form) return;
     const body = new URLSearchParams(new FormData(form));
     favoritePending = true;
@@ -652,7 +670,11 @@
         const body = new URLSearchParams({ return_to: location.pathname + location.search });
         for (const id of ids) body.append("folder", id);
         return await navigate("/folders/order", {
-          method: "POST", body, history: "replace", refreshList: true, keepReaderScroll: true,
+          method: "POST",
+          body,
+          history: "replace",
+          refreshList: true,
+          keepReaderScroll: true,
         });
       } finally {
         folderOrderPending = false;
@@ -673,7 +695,9 @@
       [folders[from], folders[to]] = [folders[to], folders[from]];
       const saved = await saveFolderOrder(folders.map(item => item.dataset.sortableFolder));
       if (saved) {
-        const current = document.querySelector(`.subscription-manager[open] .folder-board > [data-sortable-folder="${folder.dataset.sortableFolder}"]`);
+        const current = document.querySelector(
+          `.subscription-manager[open] .folder-board > [data-sortable-folder="${folder.dataset.sortableFolder}"]`,
+        );
         const button = current?.querySelector(`[data-folder-step="${orderButton.dataset.folderStep}"]:not(:disabled)`);
         (button || current?.querySelector("[data-folder-step]:not(:disabled)"))?.focus();
       }

@@ -3,6 +3,7 @@
 ## 基本方針
 
 - 作業報告は日本語で簡潔かつ丁寧に書く。
+- 改行・空行・インデントは [コーディング規約](docs/coding-style.md) に従う。
 - Go、`net/http`、`html/template`、素のJavaScript、PostgreSQLで構成する。Goのバージョンは `go.mod` を参照する。
 - モジュラーモノリスを維持する。依存方向とDBの所有境界は [設計方針](docs/architecture.md) に従う。依存方向は `architecture/dependencies_test.go` で検査する。
 - `feeds` は購読とフォルダー、`articles` は記事と閲覧状態を所有する。取得の調整は `ingestion`、検索の入口は `search`、HTTP・画面・コマンドの接続は `cmd/reader` に置く。

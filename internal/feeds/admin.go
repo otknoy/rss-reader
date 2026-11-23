@@ -22,6 +22,11 @@ func (s *Store) Inspect(ctx context.Context, table string, limit, offset int64) 
 		return nil, sql.ErrNoRows
 	}
 	var data []byte
-	err := s.db.QueryRowContext(ctx, "SELECT COALESCE(jsonb_agg(t ORDER BY "+order+"), '[]'::jsonb) FROM ("+query+") AS t", limit, offset).Scan(&data)
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT COALESCE(jsonb_agg(t ORDER BY "+order+"), '[]'::jsonb) FROM ("+query+") AS t",
+		limit,
+		offset,
+	).Scan(&data)
 	return data, err
 }

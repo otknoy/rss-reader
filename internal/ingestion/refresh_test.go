@@ -19,7 +19,15 @@ func TestFeedTTL(t *testing.T) {
 		value string
 		want  int64
 	}{
-		{"", 0}, {"0", 0}, {"-1", 0}, {"abc", 0}, {"1.5", 0}, {" 60 ", 60}, {"10", 10}, {"9223372036854775807", 0}, {"99999999999999999999999", 0},
+		{"", 0},
+		{"0", 0},
+		{"-1", 0},
+		{"abc", 0},
+		{"1.5", 0},
+		{" 60 ", 60},
+		{"10", 10},
+		{"9223372036854775807", 0},
+		{"99999999999999999999999", 0},
 	} {
 		t.Run(tc.value, func(t *testing.T) {
 			raw := `<rss version="2.0"><channel><title>TTL test</title><link>https://example.com</link><description>test</description><ttl>` + tc.value + `</ttl></channel></rss>`
@@ -50,16 +58,29 @@ func (s *articleStub) Save(_ context.Context, a articles.Article) error {
 
 func TestConditionalFetch(t *testing.T) {
 	fixture := `<rss version="2.0"><channel><title>TTL test</title><link>https://example.com</link><description>test</description><ttl>90</ttl><item><guid>1</guid><title>記事</title><link>https://example.com/one</link></item></channel></rss>`
-	previous := feeds.Feed{ID: 1, Title: "old", URL: "https://example.com/feed", TTLMinutes: 60, ETag: `"old"`, LastModified: "Mon, 16 Nov 2026 00:00:00 GMT"}
+	previous := feeds.Feed{
+		ID:           1,
+		Title:        "old",
+		URL:          "https://example.com/feed",
+		TTLMinutes:   60,
+		ETag:         `"old"`,
+		LastModified: "Mon, 16 Nov 2026 00:00:00 GMT",
+	}
 	for _, status := range []int{http.StatusOK, http.StatusNotModified, http.StatusServiceUnavailable} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			writer := &articleStub{}
 			service := New(nil, writer, DefaultInterval)
 			service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-				if req.Header.Get("If-None-Match") != previous.ETag || req.Header.Get("If-Modified-Since") != previous.LastModified {
+				if req.Header.Get("If-None-Match") != previous.ETag ||
+					req.Header.Get("If-Modified-Since") != previous.LastModified {
 					t.Fatal("conditional headers missing")
 				}
-				return &http.Response{StatusCode: status, Header: http.Header{"Etag": {`"new"`}}, Body: io.NopCloser(strings.NewReader(fixture)), Request: req}, nil
+				return &http.Response{
+					StatusCode: status,
+					Header:     http.Header{"Etag": {`"new"`}},
+					Body:       io.NopCloser(strings.NewReader(fixture)),
+					Request:    req,
+				}, nil
 			})}
 			result := service.fetch(context.Background(), previous)
 			switch status {
@@ -71,11 +92,18 @@ func TestConditionalFetch(t *testing.T) {
 					t.Fatal("200 response should clear old validators when absent")
 				}
 			case http.StatusNotModified:
-				if result.Err != nil || result.TTLMinutes != 60 || result.ETag != `"new"` || result.LastModified != previous.LastModified || len(writer.saved) != 0 {
+				if result.Err != nil ||
+					result.TTLMinutes != 60 ||
+					result.ETag != `"new"` ||
+					result.LastModified != previous.LastModified ||
+					len(writer.saved) != 0 {
 					t.Fatalf("result=%+v saved=%v", result, writer.saved)
 				}
 			default:
-				if result.Err == nil || result.TTLMinutes != 60 || result.ETag != previous.ETag || len(writer.saved) != 0 {
+				if result.Err == nil ||
+					result.TTLMinutes != 60 ||
+					result.ETag != previous.ETag ||
+					len(writer.saved) != 0 {
 					t.Fatalf("result=%+v saved=%v", result, writer.saved)
 				}
 			}
@@ -85,7 +113,12 @@ func TestConditionalFetch(t *testing.T) {
 		writer := &articleStub{err: errors.New("database unavailable")}
 		service := New(nil, writer, DefaultInterval)
 		service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 200, Header: http.Header{"Etag": {`"new"`}}, Body: io.NopCloser(strings.NewReader(fixture)), Request: req}, nil
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Etag": {`"new"`}},
+				Body:       io.NopCloser(strings.NewReader(fixture)),
+				Request:    req,
+			}, nil
 		})}
 		result := service.fetch(context.Background(), previous)
 		if result.Err == nil || result.ETag != previous.ETag || result.TTLMinutes != previous.TTLMinutes {
@@ -126,19 +159,32 @@ func (s *subscriptionsStub) WithRefreshLock(_ context.Context, run func() error)
 }
 
 func TestRefreshContinuesAfterFeedFailure(t *testing.T) {
-	source := &subscriptionsStub{rows: []feeds.Feed{{ID: 1, URL: "https://example.com/bad"}, {ID: 2, URL: "https://example.com/good"}}}
+	source := &subscriptionsStub{rows: []feeds.Feed{
+		{ID: 1, URL: "https://example.com/bad"},
+		{ID: 2, URL: "https://example.com/good"},
+	}}
 	service := New(source, &articleStub{}, 45*time.Minute)
 	service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 		status := 304
 		if req.URL.Path == "/bad" {
 			status = 503
 		}
-		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
+		return &http.Response{
+			StatusCode: status,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("")),
+			Request:    req,
+		}, nil
 	})}
 	if err := service.RefreshDue(context.Background()); err == nil {
 		t.Fatal("expected partial failure")
 	}
-	if source.dueCalls != 1 || source.listCalls != 0 || len(source.results) != 2 || source.results[0].Err == nil || source.results[1].Err != nil || source.interval != 45*time.Minute {
+	if source.dueCalls != 1 ||
+		source.listCalls != 0 ||
+		len(source.results) != 2 ||
+		source.results[0].Err == nil ||
+		source.results[1].Err != nil ||
+		source.interval != 45*time.Minute {
 		t.Fatalf("unexpected processing: %+v", source)
 	}
 	source.busy = true

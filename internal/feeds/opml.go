@@ -130,7 +130,10 @@ func parseOPML(input io.Reader) (parsedOPML, error) {
 			if title == "" {
 				title = rawURL
 			}
-			result.feeds = append(result.feeds, opmlFeed{Feed: Feed{URL: rawURL, Title: title}, folder: strings.Join(path, " / ")})
+			result.feeds = append(result.feeds, opmlFeed{
+				Feed:   Feed{URL: rawURL, Title: title},
+				folder: strings.Join(path, " / "),
+			})
 		case xml.EndElement:
 			if len(levels) > 0 && levels[len(levels)-1] == depth {
 				levels = levels[:len(levels)-1]
@@ -158,6 +161,7 @@ func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (result ImportR
 	if err != nil {
 		return result, err
 	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return result, err
@@ -168,6 +172,7 @@ func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (result ImportR
 			err = errors.Join(err, rollbackErr)
 		}
 	}()
+
 	result.Existing = parsed.duplicates
 	result.Skipped = parsed.skipped
 	for _, feed := range parsed.feeds {
@@ -177,11 +182,17 @@ func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (result ImportR
 		if err == nil && feed.folder != "" {
 			_, err = tx.ExecContext(ctx, `INSERT INTO feeds.folders(name) VALUES($1) ON CONFLICT(name) DO NOTHING`, feed.folder)
 			if err == nil {
-				_, err = tx.ExecContext(ctx, `UPDATE feeds.subscriptions SET folder_id=(SELECT id FROM feeds.folders WHERE name=$2) WHERE id=$1`, id, feed.folder)
+				_, err = tx.ExecContext(
+					ctx,
+					`UPDATE feeds.subscriptions SET folder_id=(SELECT id FROM feeds.folders WHERE name=$2) WHERE id=$1`,
+					id,
+					feed.folder,
+				)
 			}
 		} else if errors.Is(err, sql.ErrNoRows) {
 			err = tx.QueryRowContext(ctx, `UPDATE feeds.subscriptions SET active=true,next_fetch_at=NULL WHERE url=$1 AND NOT active RETURNING id`, feed.URL).Scan(&id)
 		}
+
 		if errors.Is(err, sql.ErrNoRows) {
 			result.Existing++
 			continue
@@ -191,6 +202,7 @@ func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (result ImportR
 		}
 		result.Added++
 	}
+
 	if err := tx.Commit(); err != nil {
 		return ImportResult{}, err
 	}
@@ -236,10 +248,19 @@ func (s *Store) ExportOPML(ctx context.Context, output io.Writer) error {
 	}
 	grouped := make(map[int64][]opmlOutline)
 	for _, feed := range list {
-		grouped[feed.FolderID] = append(grouped[feed.FolderID], opmlOutline{Text: feed.Title, Title: feed.Title, Type: "rss", URL: feed.URL})
+		grouped[feed.FolderID] = append(grouped[feed.FolderID], opmlOutline{
+			Text:  feed.Title,
+			Title: feed.Title,
+			Type:  "rss",
+			URL:   feed.URL,
+		})
 	}
 	for _, folder := range folders {
-		doc.Body.Outlines = append(doc.Body.Outlines, opmlOutline{Text: folder.Name, Title: folder.Name, Children: grouped[folder.ID]})
+		doc.Body.Outlines = append(doc.Body.Outlines, opmlOutline{
+			Text:     folder.Name,
+			Title:    folder.Name,
+			Children: grouped[folder.ID],
+		})
 	}
 	doc.Body.Outlines = append(doc.Body.Outlines, grouped[0]...)
 	if _, err := io.WriteString(output, xml.Header); err != nil {

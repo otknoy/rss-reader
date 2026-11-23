@@ -116,7 +116,12 @@ func TestPrototypeIntegration(t *testing.T) {
 			ttl   int64
 			delay time.Duration
 		}{{60, time.Hour}, {10, 30 * time.Minute}, {0, 30 * time.Minute}} {
-			metadata := feeds.FetchResult{Title: "scheduled", TTLMinutes: tc.ttl, ETag: `"v1"`, LastModified: "Mon, 16 Nov 2026 00:00:00 GMT"}
+			metadata := feeds.FetchResult{
+				Title:        "scheduled",
+				TTLMinutes:   tc.ttl,
+				ETag:         `"v1"`,
+				LastModified: "Mon, 16 Nov 2026 00:00:00 GMT",
+			}
 			if err := fs.Record(ctx, feedID, metadata, 30*time.Minute); err != nil {
 				t.Fatal(err)
 			}
@@ -127,7 +132,11 @@ func TestPrototypeIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 			f := recorded[0]
-			if f.CheckedAt == nil || f.NextFetchAt == nil || f.LastSuccessAt == nil || f.TTLMinutes != tc.ttl || f.NextFetchAt.Sub(*f.CheckedAt) != tc.delay {
+			if f.CheckedAt == nil ||
+				f.NextFetchAt == nil ||
+				f.LastSuccessAt == nil ||
+				f.TTLMinutes != tc.ttl ||
+				f.NextFetchAt.Sub(*f.CheckedAt) != tc.delay {
 				t.Fatalf("bad schedule: %+v", f)
 			}
 			if due, err := restarted.ListDue(ctx); err != nil || len(due) != 0 {
@@ -147,7 +156,9 @@ func TestPrototypeIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if failed[0].LastError == "" || !failed[0].LastSuccessAt.Equal(*f.LastSuccessAt) || failed[0].NextFetchAt.Sub(*failed[0].CheckedAt) != tc.delay {
+			if failed[0].LastError == "" ||
+				!failed[0].LastSuccessAt.Equal(*f.LastSuccessAt) ||
+				failed[0].NextFetchAt.Sub(*failed[0].CheckedAt) != tc.delay {
 				t.Fatalf("failure lost schedule or success state: %+v", failed[0])
 			}
 		}
@@ -177,7 +188,8 @@ func TestPrototypeIntegration(t *testing.T) {
 		callbackErr := errors.New("fetch failed")
 		err := fs.WithRefreshLock(canceled, func() error {
 			called := false
-			if err := other.WithRefreshLock(ctx, func() error { called = true; return nil }); !errors.Is(err, feeds.ErrRefreshInProgress) || called {
+			if err := other.WithRefreshLock(ctx, func() error { called = true; return nil }); !errors.Is(err, feeds.ErrRefreshInProgress) ||
+				called {
 				t.Fatalf("overlapping refresh allowed: %v", err)
 			}
 			cancelLock()
@@ -191,7 +203,14 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 	})
 
-	article := articles.Article{SourceID: list[0].ID, ExternalID: "entry-1", SourceName: "テスト購読", URL: "https://example.com/one", Title: "Goの記事", BodyText: "日本語の全文検索 100% foo_bar"}
+	article := articles.Article{
+		SourceID:   list[0].ID,
+		ExternalID: "entry-1",
+		SourceName: "テスト購読",
+		URL:        "https://example.com/one",
+		Title:      "Goの記事",
+		BodyText:   "日本語の全文検索 100% foo_bar",
+	}
 	if err := as.Save(ctx, article); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +232,12 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err != nil || !saved.IsRead || !saved.Favorite {
 		t.Fatalf("state lost: %+v, %v", saved, err)
 	}
-	full := articles.FullContent{Title: "取得した記事", HTML: `<h2>全文</h2><p>全文だけのキーワード</p><img src="/photo.jpg">`, Text: "全文だけのキーワード", URL: "https://example.com/one"}
+	full := articles.FullContent{
+		Title: "取得した記事",
+		HTML:  `<h2>全文</h2><p>全文だけのキーワード</p><img src="/photo.jpg">`,
+		Text:  "全文だけのキーワード",
+		URL:   "https://example.com/one",
+	}
 	if err := as.SaveFullContent(ctx, articleID, full); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +246,12 @@ func TestPrototypeIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	complete, err := as.Get(ctx, articleID)
-	if err != nil || complete.FullBodyHTML != full.HTML || complete.FullFetchedAt == nil || complete.BodyText != article.BodyText || !complete.IsRead || !complete.Favorite {
+	if err != nil ||
+		complete.FullBodyHTML != full.HTML ||
+		complete.FullFetchedAt == nil ||
+		complete.BodyText != article.BodyText ||
+		!complete.IsRead ||
+		!complete.Favorite {
 		t.Fatalf("full content or state lost: %+v %v", complete, err)
 	}
 	if found, err := as.Search(ctx, articles.Query{Text: full.Text}); err != nil || found.Total != 1 {
@@ -241,7 +270,12 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err != nil || r.Total != 0 {
 		t.Fatalf("unexpected match: %+v %v", r, err)
 	}
-	app := &application{feeds: fs, articles: as, search: search.New(as), fetcher: ingestion.New(fs, as, ingestion.DefaultInterval)}
+	app := &application{
+		feeds:    fs,
+		articles: as,
+		search:   search.New(as),
+		fetcher:  ingestion.New(fs, as, ingestion.DefaultInterval),
+	}
 	request := func(method, path string, form url.Values) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, path, strings.NewReader(form.Encode()))
@@ -250,14 +284,23 @@ func TestPrototypeIntegration(t *testing.T) {
 		app.routes().ServeHTTP(w, req)
 		return w
 	}
-	if w := request("GET", "/?q=日本語&view=all", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "更新された記事") {
+	if w := request("GET", "/?q=日本語&view=all", nil); w.Code != 200 ||
+		!strings.Contains(w.Body.String(), "更新された記事") {
 		t.Fatalf("search HTTP: %d %s", w.Code, w.Body.String())
 	}
-	if w := request("GET", fmt.Sprintf("/articles/%d", articleID), nil); w.Code != 200 || !strings.Contains(w.Body.String(), full.Text) {
+	if w := request("GET", fmt.Sprintf("/articles/%d", articleID), nil); w.Code != 200 ||
+		!strings.Contains(w.Body.String(), full.Text) {
 		t.Fatalf("detail HTTP: %d", w.Code)
 	}
 	t.Run("read-only database inspection", func(t *testing.T) {
-		for _, table := range []string{"subscriptions", "folders", "closed_folders", "entries", "full_contents", "article_views"} {
+		for _, table := range []string{
+			"subscriptions",
+			"folders",
+			"closed_folders",
+			"entries",
+			"full_contents",
+			"article_views",
+		} {
 			if w := request("GET", "/admin/database?table="+table, nil); w.Code != http.StatusOK {
 				t.Fatalf("inspect %s: %d", table, w.Code)
 			}
@@ -285,13 +328,19 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 	})
 	selection := fmt.Sprintf("/?article=%d&q=日本語&feed=%d", articleID, article.SourceID)
-	if w := request("GET", selection, nil); w.Code != 200 || !strings.Contains(w.Body.String(), `data-reading-id="`+fmt.Sprint(articleID)+`"`) || !strings.Contains(w.Body.String(), `id="list-pane"`) {
+	if w := request("GET", selection, nil); w.Code != 200 ||
+		!strings.Contains(w.Body.String(), `data-reading-id="`+fmt.Sprint(articleID)+`"`) ||
+		!strings.Contains(w.Body.String(), `id="list-pane"`) {
 		t.Fatalf("workspace selection: %d %s", w.Code, w.Body.String())
 	}
 	if w := request("GET", "/?article=invalid", nil); w.Code != http.StatusBadRequest {
 		t.Fatalf("invalid selection status: %d", w.Code)
 	}
-	if w := request("POST", "/articles", url.Values{"url": {"https://example.com/manual"}, "title": {"手動登録記事"}, "body": {"保存した本文"}}); w.Code != 303 {
+	if w := request("POST", "/articles", url.Values{
+		"url":   {"https://example.com/manual"},
+		"title": {"手動登録記事"},
+		"body":  {"保存した本文"},
+	}); w.Code != 303 {
 		t.Fatalf("manual add HTTP: %d %s", w.Code, w.Body.String())
 	}
 	if w := request("GET", "/?view=read", nil); w.Code != http.StatusOK ||
@@ -310,7 +359,8 @@ func TestPrototypeIntegration(t *testing.T) {
 	if w := request("POST", fmt.Sprintf("/articles/%d/state", articleID), url.Values{"kind": {"read"}, "value": {"false"}}); w.Code != 303 {
 		t.Fatalf("state HTTP: %d", w.Code)
 	}
-	if w := request("GET", "/?view=unread", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "更新された記事") {
+	if w := request("GET", "/?view=unread", nil); w.Code != 200 ||
+		!strings.Contains(w.Body.String(), "更新された記事") {
 		t.Fatalf("unread HTTP: %d", w.Code)
 	}
 	if w := request("GET", "/?view=unread-favorites", nil); w.Code != http.StatusOK ||
@@ -349,7 +399,8 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err := as.Save(ctx, article); err != nil {
 		t.Fatal(err)
 	}
-	if found, err := as.Search(ctx, articles.Query{Text: "更新された記事"}); err != nil || found.Total != 0 {
+	if found, err := as.Search(ctx, articles.Query{Text: "更新された記事"}); err != nil ||
+		found.Total != 0 {
 		t.Fatalf("deleted article returned after refetch: %+v %v", found, err)
 	}
 	if w := request("GET", fmt.Sprintf("/articles/%d", articleID), nil); w.Code != http.StatusNotFound {
@@ -364,15 +415,21 @@ func TestPrototypeIntegration(t *testing.T) {
 		if status, err := as.FullContentStatus(ctx, manualItem.ID); err != nil || status.Pending {
 			t.Fatalf("manual registration unexpectedly queued: %+v %v", status, err)
 		}
-		if err := as.SaveFullContent(ctx, manualItem.ID, articles.FullContent{HTML: "<p>手動登録記事の本文</p>", Text: "手動登録記事の本文", URL: manualItem.URL}); err != nil {
+		if err := as.SaveFullContent(ctx, manualItem.ID, articles.FullContent{
+			HTML: "<p>手動登録記事の本文</p>",
+			Text: "手動登録記事の本文",
+			URL:  manualItem.URL,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		manualContentURL := fmt.Sprintf("/articles/%d/content-status", manualItem.ID)
-		if w := request("POST", manualContentURL, nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
+		if w := request("POST", manualContentURL, nil); w.Code != http.StatusOK ||
+			!strings.Contains(w.Body.String(), `"pending":false`) {
 			t.Fatalf("already fetched article was queued on first display: %d %s", w.Code, w.Body.String())
 		}
 		var manualOpenedAt *time.Time
-		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, manualItem.ID).Scan(&manualOpenedAt); err != nil || manualOpenedAt == nil {
+		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, manualItem.ID).Scan(&manualOpenedAt); err != nil ||
+			manualOpenedAt == nil {
 			t.Fatalf("display of already fetched article was not recorded: %v %v", manualOpenedAt, err)
 		}
 		postView := func(viewID string) int {
@@ -407,7 +464,13 @@ func TestPrototypeIntegration(t *testing.T) {
 			strings.Count(viewList.Body.String(), viewID) != 1 {
 			t.Fatalf("inspect viewing events: status %d", viewList.Code)
 		}
-		queued := articles.Article{SourceID: 999, ExternalID: "queue-one", URL: "https://example.com/queue-one", Title: "取得待ちのテスト", BodyText: "RSSの要約"}
+		queued := articles.Article{
+			SourceID:   999,
+			ExternalID: "queue-one",
+			URL:        "https://example.com/queue-one",
+			Title:      "取得待ちのテスト",
+			BodyText:   "RSSの要約",
+		}
 		if err := as.Save(ctx, queued); err != nil {
 			t.Fatal(err)
 		}
@@ -420,21 +483,25 @@ func TestPrototypeIntegration(t *testing.T) {
 		if _, err := as.MarkRead(ctx, []int64{queuedID}); err != nil {
 			t.Fatal(err)
 		}
-		if w := request("GET", fmt.Sprintf("/articles/%d", queuedID), nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "RSSの要約") {
+		if w := request("GET", fmt.Sprintf("/articles/%d", queuedID), nil); w.Code != http.StatusOK ||
+			!strings.Contains(w.Body.String(), "RSSの要約") {
 			t.Fatalf("direct article did not show its RSS summary: %d %s", w.Code, w.Body.String())
 		}
 		var openedAt *time.Time
-		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&openedAt); err != nil || openedAt != nil {
+		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&openedAt); err != nil ||
+			openedAt != nil {
 			t.Fatalf("read or GET changed first display: %v %v", openedAt, err)
 		}
 		contentURL := fmt.Sprintf("/articles/%d/content-status", queuedID)
-		if w := request("GET", contentURL, nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
+		if w := request("GET", contentURL, nil); w.Code != http.StatusOK ||
+			!strings.Contains(w.Body.String(), `"pending":false`) {
 			t.Fatalf("undisplayed article was queued: %d %s", w.Code, w.Body.String())
 		}
 		if item, err := as.RecordDisplay(ctx, queuedID, ""); err != nil || !item.FullContentPending {
 			t.Fatalf("display did not schedule extraction: %+v %v", item, err)
 		}
-		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&openedAt); err != nil || openedAt == nil {
+		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&openedAt); err != nil ||
+			openedAt == nil {
 			t.Fatalf("first display was not recorded: %v %v", openedAt, err)
 		}
 
@@ -458,7 +525,10 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("failure did not back off: %v %v", jobs, err)
 		}
 		retained, err := as.Get(ctx, queuedID)
-		if err != nil || retained.BodyText != queued.BodyText || !retained.FullContentPending || retained.FullFetchError == "" {
+		if err != nil ||
+			retained.BodyText != queued.BodyText ||
+			!retained.FullContentPending ||
+			retained.FullFetchError == "" {
 			t.Fatalf("failure lost article or retry state: %+v %v", retained, err)
 		}
 		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries SET full_next_fetch_at=now()-interval '1 second',full_fetch_until=now()-interval '1 second' WHERE id=$1`, queuedID); err != nil {
@@ -473,7 +543,11 @@ func TestPrototypeIntegration(t *testing.T) {
 		if jobs, err := freshStore.PendingFullContent(ctx); err != nil || len(jobs) != 1 {
 			t.Fatalf("canceled work was not resumable: %v %v", jobs, err)
 		}
-		if err := as.SaveFullContent(ctx, queuedID, articles.FullContent{HTML: "<p>取得済み本文</p>", Text: "取得済み本文", URL: queued.URL}); err != nil {
+		if err := as.SaveFullContent(ctx, queuedID, articles.FullContent{
+			HTML: "<p>取得済み本文</p>",
+			Text: "取得済み本文",
+			URL:  queued.URL,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		if err := as.Save(ctx, queued); err != nil {
@@ -483,18 +557,26 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err != nil || status.Pending || status.Error != "" {
 			t.Fatalf("completed article was requeued: %+v %v", status, err)
 		}
-		if w := request("GET", fmt.Sprintf("/articles/%d/content-status", queuedID), nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
+		if w := request("GET", fmt.Sprintf("/articles/%d/content-status", queuedID), nil); w.Code != http.StatusOK ||
+			!strings.Contains(w.Body.String(), `"pending":false`) {
 			t.Fatalf("content status endpoint: %d %s", w.Code, w.Body.String())
 		}
-		if w := request("POST", contentURL, nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":false`) {
+		if w := request("POST", contentURL, nil); w.Code != http.StatusOK ||
+			!strings.Contains(w.Body.String(), `"pending":false`) {
 			t.Fatalf("display of fetched article requeued it: %d %s", w.Code, w.Body.String())
 		}
 		var reopenedAt time.Time
-		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&reopenedAt); err != nil || !reopenedAt.Equal(*openedAt) {
+		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&reopenedAt); err != nil ||
+			!reopenedAt.Equal(*openedAt) {
 			t.Fatalf("reopening changed first display: %v %v", reopenedAt, err)
 		}
 		for i := 0; i < 12; i++ {
-			a := articles.Article{SourceID: 999, ExternalID: fmt.Sprintf("queue-batch-%d", i), URL: fmt.Sprintf("https://example.com/batch/%d", i), Title: "batch"}
+			a := articles.Article{
+				SourceID:   999,
+				ExternalID: fmt.Sprintf("queue-batch-%d", i),
+				URL:        fmt.Sprintf("https://example.com/batch/%d", i),
+				Title:      "batch",
+			}
 			if err := as.Save(ctx, a); err != nil {
 				t.Fatal(err)
 			}
@@ -527,10 +609,12 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, retryID).Scan(&retryBefore); err != nil {
 			t.Fatal(err)
 		}
-		if w := request("POST", fmt.Sprintf("/articles/%d/content-status", retryID), nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pending":true`) {
+		if w := request("POST", fmt.Sprintf("/articles/%d/content-status", retryID), nil); w.Code != http.StatusOK ||
+			!strings.Contains(w.Body.String(), `"pending":true`) {
 			t.Fatalf("display during backoff: %d %s", w.Code, w.Body.String())
 		}
-		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, retryID).Scan(&retryAfter); err != nil || !retryBefore.Equal(retryAfter) {
+		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, retryID).Scan(&retryAfter); err != nil ||
+			!retryBefore.Equal(retryAfter) {
 			t.Fatalf("reopening changed an existing retry schedule: %v %v", retryAfter, err)
 		}
 	})
@@ -558,7 +642,16 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		existing, archived := find(initial, existingURL), find(initial, archivedURL)
-		if err := fs.Record(ctx, existing.ID, feeds.FetchResult{Title: "既存の名前", TTLMinutes: 60, ETag: `"stable"`}, 30*time.Minute); err != nil {
+		if err := fs.Record(
+			ctx,
+			existing.ID,
+			feeds.FetchResult{
+				Title:      "既存の名前",
+				TTLMinutes: 60,
+				ETag:       `"stable"`,
+			},
+			30*time.Minute,
+		); err != nil {
 			t.Fatal(err)
 		}
 		if err := fs.Remove(ctx, archived.ID); err != nil {
@@ -577,7 +670,12 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		q := location.Query()
-		if w.Code != http.StatusSeeOther || q.Get("added") != "2" || q.Get("existing") != "2" || q.Get("skipped") != "1" || q.Get("q") != "Go" || q.Get("view") != "unread" {
+		if w.Code != http.StatusSeeOther ||
+			q.Get("added") != "2" ||
+			q.Get("existing") != "2" ||
+			q.Get("skipped") != "1" ||
+			q.Get("q") != "Go" ||
+			q.Get("view") != "unread" {
 			t.Fatalf("import response: %d %s %s", w.Code, location, w.Body.String())
 		}
 		after, err := fs.List(ctx)
@@ -588,7 +686,10 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("subscription count: %d -> %d", len(before), len(after))
 		}
 		unchanged := find(after, existingURL)
-		if unchanged.Title != saved.Title || unchanged.ETag != saved.ETag || unchanged.NextFetchAt == nil || !unchanged.NextFetchAt.Equal(*saved.NextFetchAt) {
+		if unchanged.Title != saved.Title ||
+			unchanged.ETag != saved.ETag ||
+			unchanged.NextFetchAt == nil ||
+			!unchanged.NextFetchAt.Equal(*saved.NextFetchAt) {
 			t.Fatalf("existing subscription changed: %+v", unchanged)
 		}
 		restored := find(after, archivedURL)
@@ -622,7 +723,10 @@ func TestPrototypeIntegration(t *testing.T) {
 		if emptyID == 0 {
 			t.Fatal("folder not created")
 		}
-		if w := request("GET", fmt.Sprintf("/?folder=%d", emptyID), nil); w.Code != http.StatusOK || (strings.Contains(w.Body.String(), "data-article-id=") || !strings.Contains(w.Body.String(), "<span>空のフォルダー</span></a></summary>")) {
+		emptyFolderSummary := regexp.MustCompile(`<span>空のフォルダー</span></a>\s*</summary>`)
+		if w := request("GET", fmt.Sprintf("/?folder=%d", emptyID), nil); w.Code != http.StatusOK ||
+			strings.Contains(w.Body.String(), "data-article-id=") ||
+			!emptyFolderSummary.MatchString(w.Body.String()) {
 			t.Fatalf("empty folder response: %d", w.Code)
 		}
 		for _, folderID := range []int64{0, emptyID} {
@@ -642,11 +746,15 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err := fs.Move(ctx, existing.ID, emptyID); err != nil {
 			t.Fatal(err)
 		}
-		if err := as.Save(ctx, articles.Article{SourceID: existing.ID, URL: "https://opml.example.org/folder-unread"}); err != nil {
+		if err := as.Save(ctx, articles.Article{
+			SourceID: existing.ID,
+			URL:      "https://opml.example.org/folder-unread",
+		}); err != nil {
 			t.Fatal(err)
 		}
 		page := request("GET", "/?q=no-matching-article", nil)
-		if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<span>空のフォルダー</span><span class="unread-badge"><span class="visually-hidden">未読 </span><span data-unread-count>1`) {
+		if page.Code != http.StatusOK ||
+			!strings.Contains(page.Body.String(), `<span>空のフォルダー</span><span class="unread-badge"><span class="visually-hidden">未読 </span><span data-unread-count>1`) {
 			t.Fatalf("folder unread count missing from filtered page: %d", page.Code)
 		}
 		if !strings.Contains(page.Body.String(), fmt.Sprintf(`<span>%s</span><span class="unread-badge"><span class="visually-hidden">未読 </span><span data-unread-count>1`, saved.Title)) {
@@ -703,7 +811,9 @@ func TestPrototypeIntegration(t *testing.T) {
 			}
 			feedCount += len(outline.Children)
 		}
-		if document.Version != "2.0" || feedCount != len(after) || !strings.Contains(output.String(), "日本語 &amp; 新着") {
+		if document.Version != "2.0" ||
+			feedCount != len(after) ||
+			!strings.Contains(output.String(), "日本語 &amp; 新着") {
 			t.Fatalf("invalid export: %s", output.String())
 		}
 		result, err := fs.ImportOPML(ctx, bytes.NewReader(output.Bytes()))
@@ -717,7 +827,9 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal("export is not deterministic")
 		}
 		exported := request("GET", "/feeds/export.opml", nil)
-		if exported.Code != http.StatusOK || !strings.Contains(exported.Header().Get("Content-Disposition"), "subscriptions.opml") || exported.Body.String() != output.String() {
+		if exported.Code != http.StatusOK ||
+			!strings.Contains(exported.Header().Get("Content-Disposition"), "subscriptions.opml") ||
+			exported.Body.String() != output.String() {
 			t.Fatalf("download response: %d %v", exported.Code, exported.Header())
 		}
 		// Simulate a DB failure after the first insert to verify transaction rollback.
@@ -747,7 +859,10 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		var boundaryID, unopenedID int64
-		for title, id := range map[string]*int64{"history-fixture-02": &boundaryID, "history-fixture-22": &unopenedID} {
+		for title, id := range map[string]*int64{
+			"history-fixture-02": &boundaryID,
+			"history-fixture-22": &unopenedID,
+		} {
 			if err := owner.QueryRowContext(ctx, "SELECT id FROM articles.entries WHERE title=$1", title).Scan(id); err != nil {
 				t.Fatal(err)
 			}
@@ -781,7 +896,8 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err := as.Delete(ctx, boundaryID); err != nil {
 			t.Fatal(err)
 		}
-		if deleted := request("GET", historyURL, nil); deleted.Code != http.StatusOK || strings.Contains(deleted.Body.String(), ">history-fixture-02</a>") {
+		if deleted := request("GET", historyURL, nil); deleted.Code != http.StatusOK ||
+			strings.Contains(deleted.Body.String(), ">history-fixture-02</a>") {
 			t.Fatalf("deleted article appears in history: status %d", deleted.Code)
 		}
 	})
@@ -881,7 +997,9 @@ func TestPrototypeIntegration(t *testing.T) {
 			var result struct {
 				Count int64 `json:"count"`
 			}
-			if err := json.Unmarshal(w.Body.Bytes(), &result); w.Code != http.StatusOK || err != nil || result.Count != want {
+			if err := json.Unmarshal(w.Body.Bytes(), &result); w.Code != http.StatusOK ||
+				err != nil ||
+				result.Count != want {
 				t.Fatalf("bulk read count: status=%d, body=%s, want=%d", w.Code, w.Body.String(), want)
 			}
 		}

@@ -14,7 +14,44 @@ import (
 // Only article formatting is allowed; publisher CSS, scripts, forms and embeds are removed.
 var articlePolicy = func() *bluemonday.Policy {
 	p := bluemonday.NewPolicy()
-	p.AllowElements("p", "br", "hr", "h2", "h3", "h4", "h5", "h6", "strong", "b", "em", "i", "s", "del", "small", "sup", "sub", "ul", "ol", "li", "blockquote", "pre", "code", "figure", "figcaption", "img", "a", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "div", "span")
+	p.AllowElements(
+		"p",
+		"br",
+		"hr",
+		"h2",
+		"h3",
+		"h4",
+		"h5",
+		"h6",
+		"strong",
+		"b",
+		"em",
+		"i",
+		"s",
+		"del",
+		"small",
+		"sup",
+		"sub",
+		"ul",
+		"ol",
+		"li",
+		"blockquote",
+		"pre",
+		"code",
+		"figure",
+		"figcaption",
+		"img",
+		"a",
+		"table",
+		"thead",
+		"tbody",
+		"tfoot",
+		"tr",
+		"th",
+		"td",
+		"div",
+		"span",
+	)
 	p.AllowAttrs("href", "title").OnElements("a")
 	p.AllowAttrs("src", "alt", "title").OnElements("img")
 	p.AllowURLSchemes("http", "https")
@@ -95,7 +132,9 @@ func resolveArticleURL(base *url.URL, raw string) string {
 		return ""
 	}
 	resolved := base.ResolveReference(relative)
-	if (resolved.Scheme != "http" && resolved.Scheme != "https") || resolved.Hostname() == "" || resolved.User != nil {
+	if (resolved.Scheme != "http" && resolved.Scheme != "https") ||
+		resolved.Hostname() == "" ||
+		resolved.User != nil {
 		return ""
 	}
 	return resolved.String()

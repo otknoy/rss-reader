@@ -87,7 +87,20 @@ func publicIP(ip netip.Addr) bool {
 	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 		return false
 	}
-	for _, raw := range []string{"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4", "2001:db8::/32", "2001::/32", "2002::/16", "64:ff9b::/96"} {
+	for _, raw := range []string{
+		"0.0.0.0/8",
+		"100.64.0.0/10",
+		"192.0.0.0/24",
+		"192.0.2.0/24",
+		"198.18.0.0/15",
+		"198.51.100.0/24",
+		"203.0.113.0/24",
+		"240.0.0.0/4",
+		"2001:db8::/32",
+		"2001::/32",
+		"2002::/16",
+		"64:ff9b::/96",
+	} {
 		if netip.MustParsePrefix(raw).Contains(ip) {
 			return false
 		}
@@ -118,6 +131,7 @@ func (s *Service) refresh(ctx context.Context, dueOnly bool, onlyID int64) error
 		if err != nil {
 			return err
 		}
+
 		var failures []error
 		for _, f := range list {
 			if onlyID != 0 && f.ID != onlyID {
@@ -126,6 +140,7 @@ func (s *Service) refresh(ctx context.Context, dueOnly bool, onlyID int64) error
 			if err := ctx.Err(); err != nil {
 				return errors.Join(append(failures, err)...)
 			}
+
 			result := s.fetch(ctx, f)
 			if err := s.feeds.Record(ctx, f.ID, result, s.interval); err != nil {
 				failures = append(failures, err)
@@ -139,7 +154,13 @@ func (s *Service) refresh(ctx context.Context, dueOnly bool, onlyID int64) error
 }
 
 func (s *Service) fetch(ctx context.Context, f feeds.Feed) (result feeds.FetchResult) {
-	result = feeds.FetchResult{Title: f.Title, TTLMinutes: f.TTLMinutes, ETag: f.ETag, LastModified: f.LastModified}
+	result = feeds.FetchResult{
+		Title:        f.Title,
+		TTLMinutes:   f.TTLMinutes,
+		ETag:         f.ETag,
+		LastModified: f.LastModified,
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.URL, nil)
 	if err != nil {
 		result.Err = err
@@ -152,6 +173,7 @@ func (s *Service) fetch(ctx context.Context, f feeds.Feed) (result feeds.FetchRe
 	if f.LastModified != "" {
 		req.Header.Set("If-Modified-Since", f.LastModified)
 	}
+
 	resp, err := s.client.Do(req)
 	if err != nil {
 		result.Err = err
@@ -171,6 +193,7 @@ func (s *Service) fetch(ctx context.Context, f feeds.Feed) (result feeds.FetchRe
 		result.Err = fmt.Errorf("HTTP %d", resp.StatusCode)
 		return
 	}
+
 	const maxFeedBytes = 4 << 20
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBytes+1))
 	if err != nil {
@@ -181,6 +204,7 @@ func (s *Service) fetch(ctx context.Context, f feeds.Feed) (result feeds.FetchRe
 		result.Err = errors.New("フィードが4MBを超えています")
 		return
 	}
+
 	parsed, err := parseFeed(raw, resp.Request.URL, f)
 	if err != nil {
 		result.Err = err
@@ -192,7 +216,12 @@ func (s *Service) fetch(ctx context.Context, f feeds.Feed) (result feeds.FetchRe
 			return
 		}
 	}
-	return feeds.FetchResult{Title: parsed.Title, TTLMinutes: parsed.TTLMinutes, ETag: resp.Header.Get("ETag"), LastModified: resp.Header.Get("Last-Modified")}
+	return feeds.FetchResult{
+		Title:        parsed.Title,
+		TTLMinutes:   parsed.TTLMinutes,
+		ETag:         resp.Header.Get("ETag"),
+		LastModified: resp.Header.Get("Last-Modified"),
+	}
 }
 
 type parsedFeed struct {
@@ -249,7 +278,16 @@ func parseFeed(raw []byte, base *url.URL, f feeds.Feed) (parsedFeed, error) {
 		} else if item.UpdatedParsed != nil {
 			published = *item.UpdatedParsed
 		}
-		items = append(items, articles.Article{SourceID: f.ID, SourceName: title, ExternalID: key, URL: link, Title: PlainText(item.Title), BodyHTML: body, BodyText: PlainText(body), PublishedAt: published})
+		items = append(items, articles.Article{
+			SourceID:    f.ID,
+			SourceName:  title,
+			ExternalID:  key,
+			URL:         link,
+			Title:       PlainText(item.Title),
+			BodyHTML:    body,
+			BodyText:    PlainText(body),
+			PublishedAt: published,
+		})
 	}
 	ttl := int64(0)
 	if original, ok := parsed.OriginalFeed().(*rss.Feed); ok {

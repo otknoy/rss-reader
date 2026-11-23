@@ -22,6 +22,7 @@ func (s *Service) RefreshFullContent(ctx context.Context, store contentStore) er
 	if err != nil {
 		return err
 	}
+
 	var failures []error
 	for _, item := range pending {
 		if err := ctx.Err(); err != nil {
@@ -40,6 +41,7 @@ func (s *Service) FetchQueuedContent(ctx context.Context, store contentStore, it
 	if err != nil || !claimed {
 		return false, err
 	}
+
 	fetchCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	content, err := s.FetchArticle(fetchCtx, item.URL)
@@ -49,6 +51,7 @@ func (s *Service) FetchQueuedContent(ctx context.Context, store contentStore, it
 	if err == nil {
 		return true, nil
 	}
+
 	cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
 	return false, errors.Join(err, store.FailFullContent(cleanup, item.ID, err))

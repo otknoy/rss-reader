@@ -146,7 +146,12 @@ func render(w http.ResponseWriter, v view) {
 func returnTo(r *http.Request) string {
 	raw := r.FormValue("return_to")
 	u, err := url.Parse(raw)
-	if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || strings.ContainsAny(raw, "\\\r\n") {
+	if err != nil ||
+		u.IsAbs() ||
+		u.Host != "" ||
+		!strings.HasPrefix(raw, "/") ||
+		strings.HasPrefix(raw, "//") ||
+		strings.ContainsAny(raw, "\\\r\n") {
 		return "/"
 	}
 	return u.RequestURI()
@@ -326,7 +331,13 @@ func (a *application) loadSidebar(ctx context.Context, folder string) (sidebar, 
 			}
 		}
 	}
-	return sidebar{feeds: list, folders: folders, closed: closed, folderName: folderName, feedIDs: ids}, nil
+	return sidebar{
+		feeds:      list,
+		folders:    folders,
+		closed:     closed,
+		folderName: folderName,
+		feedIDs:    ids,
+	}, nil
 }
 
 func (a *application) sidebarUnread(ctx context.Context, list []feeds.Feed) (map[int64]int, map[int64]int, error) {
@@ -347,6 +358,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	if feedID < 0 {
 		feedID = 0
 	}
+
 	filter := listFilter(q.Get("view"))
 	queryFilter := filter
 	if filter == "all" {
@@ -359,6 +371,7 @@ func (a *application) base(r *http.Request) (view, error) {
 		q.Del("page")
 		q.Del("before")
 	}
+
 	folder := q.Get("folder")
 	sidebar, err := a.loadSidebar(r.Context(), folder)
 	if err != nil {
@@ -368,9 +381,18 @@ func (a *application) base(r *http.Request) (view, error) {
 	if !newestFirst {
 		q.Del("sort")
 	}
+
 	result, err := a.search.Find(r.Context(), articles.Query{
-		Text: q.Get("q"), View: queryFilter, FeedID: feedID, FeedIDs: sidebar.feedIDs, Page: pagination.page,
-		NewestFirst: newestFirst, AnchorID: pagination.anchorID, BeforeAnchor: pagination.beforeAnchor, HistoryBefore: pagination.historyBefore,
+		Text:    q.Get("q"),
+		View:    queryFilter,
+		FeedID:  feedID,
+		FeedIDs: sidebar.feedIDs,
+		Page:    pagination.page,
+
+		NewestFirst:   newestFirst,
+		AnchorID:      pagination.anchorID,
+		BeforeAnchor:  pagination.beforeAnchor,
+		HistoryBefore: pagination.historyBefore,
 	})
 	if err != nil {
 		return view{}, err
@@ -379,6 +401,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	if err != nil {
 		return view{}, err
 	}
+
 	q.Del("message")
 	q.Del("article")
 	q.Del("added")
@@ -390,6 +413,7 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 	prev, next := paginationLinks(q, filter, anchoredList, pagination.anchorID, result)
 	favoritesOnly, unreadURL, favoritesURL, oldestURL, newestURL := listControlLinks(q, filter, unreadOnly)
+
 	message := ""
 	switch r.URL.Query().Get("message") {
 	case "feed-queued":
@@ -403,11 +427,42 @@ func (a *application) base(r *http.Request) (view, error) {
 	case "fetch-error":
 		message = "取得できなかったフィードがあります。「購読を管理」の取得状況をご確認ください。"
 	case "opml-imported":
-		message = fmt.Sprintf("OPML: %d件登録・%d件重複・%d件スキップ", opmlCount(r.URL.Query().Get("added")), opmlCount(r.URL.Query().Get("existing")), opmlCount(r.URL.Query().Get("skipped")))
+		message = fmt.Sprintf(
+			"OPML: %d件登録・%d件重複・%d件スキップ",
+			opmlCount(r.URL.Query().Get("added")),
+			opmlCount(r.URL.Query().Get("existing")),
+			opmlCount(r.URL.Query().Get("skipped")),
+		)
 	case "removed":
 		message = "解除しました。取得済みの記事は残しています。"
 	}
-	return view{ClosedFolders: sidebar.closed, FolderUnread: folderUnread, FeedUnread: unreadByFeed, Folders: sidebar.folders, Folder: folder, FolderName: sidebar.folderName, UnreadOnly: unreadOnly, FavoritesOnly: favoritesOnly, UnreadURL: unreadURL, FavoritesURL: favoritesURL, NewestFirst: newestFirst, OldestURL: oldestURL, NewestURL: newestURL, Feeds: sidebar.feeds, Result: result, Query: r.URL.Query().Get("q"), Filter: filter, FeedID: feedID, ReturnTo: back, ListURL: back, Previous: prev, Next: next, Message: message}, nil
+
+	return view{
+		ClosedFolders: sidebar.closed,
+		FolderUnread:  folderUnread,
+		FeedUnread:    unreadByFeed,
+		Folders:       sidebar.folders,
+		Folder:        folder,
+		FolderName:    sidebar.folderName,
+		UnreadOnly:    unreadOnly,
+		FavoritesOnly: favoritesOnly,
+		UnreadURL:     unreadURL,
+		FavoritesURL:  favoritesURL,
+		NewestFirst:   newestFirst,
+		OldestURL:     oldestURL,
+		NewestURL:     newestURL,
+		Feeds:         sidebar.feeds,
+		Result:        result,
+		Query:         r.URL.Query().Get("q"),
+		Filter:        filter,
+		FeedID:        feedID,
+
+		ReturnTo: back,
+		ListURL:  back,
+		Previous: prev,
+		Next:     next,
+		Message:  message,
+	}, nil
 }
 
 func (a *application) index(w http.ResponseWriter, r *http.Request) {
@@ -522,7 +577,11 @@ func (a *application) addArticle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	err := a.articles.Save(r.Context(), articles.Article{URL: raw, Title: strings.TrimSpace(r.FormValue("title")), BodyText: strings.TrimSpace(r.FormValue("body"))})
+	err := a.articles.Save(r.Context(), articles.Article{
+		URL:      raw,
+		Title:    strings.TrimSpace(r.FormValue("title")),
+		BodyText: strings.TrimSpace(r.FormValue("body")),
+	})
 	if err != nil {
 		fail(w, err)
 		return

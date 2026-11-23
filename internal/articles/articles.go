@@ -45,7 +45,30 @@ func (s *Store) Save(ctx context.Context, a Article) error {
 	if !hasPublished {
 		a.PublishedAt = time.Now()
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO articles.entries(source_id,external_id,source_name,url,title,body_text,body_html,published_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(source_id,external_id) DO UPDATE SET source_name=EXCLUDED.source_name,url=EXCLUDED.url,title=EXCLUDED.title,body_text=EXCLUDED.body_text,body_html=EXCLUDED.body_html,published_at=CASE WHEN $9 THEN EXCLUDED.published_at ELSE entries.published_at END,deleted_at=CASE WHEN EXCLUDED.source_id=0 THEN NULL ELSE entries.deleted_at END`, a.SourceID, a.ExternalID, a.SourceName, a.URL, a.Title, a.BodyText, a.BodyHTML, a.PublishedAt, hasPublished)
+	_, err = s.db.ExecContext(
+		ctx,
+		`INSERT INTO articles.entries (
+			source_id, external_id, source_name, url, title, body_text, body_html, published_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (source_id, external_id) DO UPDATE SET
+			source_name = EXCLUDED.source_name,
+			url = EXCLUDED.url,
+			title = EXCLUDED.title,
+			body_text = EXCLUDED.body_text,
+			body_html = EXCLUDED.body_html,
+			published_at = CASE WHEN $9 THEN EXCLUDED.published_at ELSE entries.published_at END,
+			deleted_at = CASE WHEN EXCLUDED.source_id = 0 THEN NULL ELSE entries.deleted_at END`,
+		a.SourceID,
+		a.ExternalID,
+		a.SourceName,
+		a.URL,
+		a.Title,
+		a.BodyText,
+		a.BodyHTML,
+		a.PublishedAt,
+		hasPublished,
+	)
 	return err
 }
 
@@ -55,7 +78,25 @@ const fullContentJoin = ` LEFT JOIN articles.full_contents f ON f.article_id=e.i
 
 func scan(row interface{ Scan(...any) error }) (Article, error) {
 	var a Article
-	err := row.Scan(&a.ID, &a.SourceID, &a.ExternalID, &a.SourceName, &a.URL, &a.Title, &a.BodyText, &a.BodyHTML, &a.PublishedAt, &a.IsRead, &a.Favorite, &a.FullBodyHTML, &a.FullBodyText, &a.FullSourceURL, &a.FullFetchedAt, &a.FullContentPending, &a.FullFetchError)
+	err := row.Scan(
+		&a.ID,
+		&a.SourceID,
+		&a.ExternalID,
+		&a.SourceName,
+		&a.URL,
+		&a.Title,
+		&a.BodyText,
+		&a.BodyHTML,
+		&a.PublishedAt,
+		&a.IsRead,
+		&a.Favorite,
+		&a.FullBodyHTML,
+		&a.FullBodyText,
+		&a.FullSourceURL,
+		&a.FullFetchedAt,
+		&a.FullContentPending,
+		&a.FullFetchError,
+	)
 	return a, err
 }
 
@@ -89,7 +130,12 @@ func (s *Store) SetState(ctx context.Context, id int64, kind string, value bool)
 	default:
 		return errors.New("unknown state")
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET `+field+`= $2 WHERE id=$1 AND deleted_at IS NULL`, id, value)
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE articles.entries SET `+field+`= $2 WHERE id=$1 AND deleted_at IS NULL`,
+		id,
+		value,
+	)
 	return affected(result, err)
 }
 

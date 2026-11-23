@@ -37,6 +37,7 @@ func (s *Service) FetchArticle(ctx context.Context, rawURL string) (content arti
 	if resp.StatusCode != http.StatusOK {
 		return content, fmt.Errorf("article HTTP %d", resp.StatusCode)
 	}
+
 	const maxArticleMiB = 16
 	const maxArticleBytes = maxArticleMiB << 20
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxArticleBytes+1))
@@ -46,6 +47,7 @@ func (s *Service) FetchArticle(ctx context.Context, rawURL string) (content arti
 	if len(raw) > maxArticleBytes {
 		return content, fmt.Errorf("記事が%d MiBを超えています", maxArticleMiB)
 	}
+
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = http.DetectContentType(raw)
@@ -54,6 +56,7 @@ func (s *Service) FetchArticle(ctx context.Context, rawURL string) (content arti
 	if err != nil || (mediaType != "text/html" && mediaType != "application/xhtml+xml") {
 		return content, errors.New("HTMLの記事を取得できませんでした")
 	}
+
 	decoded, err := charset.NewReader(bytes.NewReader(raw), contentType)
 	if err != nil {
 		return content, err
@@ -67,6 +70,7 @@ func (s *Service) FetchArticle(ctx context.Context, rawURL string) (content arti
 	if page.Node == nil {
 		return content, errors.New("記事の本文を抽出できませんでした")
 	}
+
 	var body, text strings.Builder
 	if err := page.RenderHTML(&body); err != nil {
 		return content, err
@@ -77,6 +81,7 @@ func (s *Service) FetchArticle(ctx context.Context, rawURL string) (content arti
 	if strings.TrimSpace(text.String()) == "" {
 		return content, errors.New("記事の本文を抽出できませんでした")
 	}
+
 	// Some publishers provide only an Open Graph cover image in the document head.
 	if cover := page.ImageURL(); cover != "" && !strings.Contains(body.String(), "<img") {
 		// Escape publisher-controlled attributes before appending a cover image.

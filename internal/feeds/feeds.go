@@ -86,16 +86,31 @@ func (s *Store) ListDue(ctx context.Context) ([]Feed, error) {
 }
 
 func (s *Store) list(ctx context.Context, dueOnly bool) (out []Feed, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,url,title,checked_at,last_error,ttl_minutes,next_fetch_at,last_success_at,etag,last_modified,COALESCE(folder_id,0)
- FROM feeds.subscriptions WHERE active AND (NOT $1 OR next_fetch_at IS NULL OR next_fetch_at<=now())
- ORDER BY next_fetch_at NULLS FIRST,id`, dueOnly)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, url, title, checked_at, last_error,
+		ttl_minutes, next_fetch_at, last_success_at, etag, last_modified, COALESCE(folder_id, 0)
+	FROM feeds.subscriptions
+	WHERE active AND (NOT $1 OR next_fetch_at IS NULL OR next_fetch_at <= now())
+	ORDER BY next_fetch_at NULLS FIRST, id`, dueOnly)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, rows.Close()) }()
+
 	for rows.Next() {
 		var f Feed
-		if err := rows.Scan(&f.ID, &f.URL, &f.Title, &f.CheckedAt, &f.LastError, &f.TTLMinutes, &f.NextFetchAt, &f.LastSuccessAt, &f.ETag, &f.LastModified, &f.FolderID); err != nil {
+		if err := rows.Scan(
+			&f.ID,
+			&f.URL,
+			&f.Title,
+			&f.CheckedAt,
+			&f.LastError,
+			&f.TTLMinutes,
+			&f.NextFetchAt,
+			&f.LastSuccessAt,
+			&f.ETag,
+			&f.LastModified,
+			&f.FolderID,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -117,12 +132,22 @@ func (s *Store) Record(ctx context.Context, id int64, result FetchResult, interv
 	if result.Err != nil {
 		message = result.Err.Error()
 	}
+
 	_, err := s.db.ExecContext(ctx, `UPDATE feeds.subscriptions SET
- checked_at=now(),last_error=$2,title=CASE WHEN $3='' THEN title ELSE $3 END,
-	 ttl_minutes=$4::bigint,etag=$5,last_modified=$6,
-	 next_fetch_at=now()+make_interval(secs=>GREATEST($7::double precision,$4::bigint::double precision*60)),
- last_success_at=CASE WHEN $8 THEN now() ELSE last_success_at END
- WHERE id=$1`, id, message, result.Title, result.TTLMinutes, result.ETag, result.LastModified, interval.Seconds(), result.Err == nil)
+		checked_at = now(),
+		last_error = $2,
+		title = CASE WHEN $3 = '' THEN title ELSE $3 END,
+		ttl_minutes = $4::bigint,
+		etag = $5,
+		last_modified = $6,
+		next_fetch_at = now() + make_interval(
+			secs => GREATEST($7::double precision, $4::bigint::double precision * 60)
+		),
+		last_success_at = CASE WHEN $8 THEN now() ELSE last_success_at END
+	WHERE id = $1`,
+		id, message, result.Title, result.TTLMinutes, result.ETag, result.LastModified,
+		interval.Seconds(), result.Err == nil,
+	)
 	return err
 }
 

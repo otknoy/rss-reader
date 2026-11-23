@@ -16,136 +16,451 @@
   --accent: #a5c7b0;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 system-ui, -apple-system, "Noto Sans JP", sans-serif; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.6 system-ui, -apple-system, "Noto Sans JP", sans-serif;
+}
 a { color: inherit; text-decoration: none; }
 a:hover { color: var(--accent); }
 button, input, textarea { font: inherit; }
-button, .button { display: inline-block; padding: 6px 12px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--text); cursor: pointer; white-space: nowrap; }
+button, .button {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
 button:hover, .button:hover { background: var(--surface); border-color: var(--muted); }
 button, a, input, textarea, summary { touch-action: manipulation; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-input, textarea { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--text); }
+input, textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 textarea { resize: vertical; }
 form { margin: 0; }
 summary { cursor: pointer; }
-.shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: 100dvh; overflow: hidden; }
-.sidebar { position: sticky; top: 0; height: 100dvh; overflow-y: auto; padding: 28px 20px; background: #181b1d; border-right: 1px solid var(--line); }
-.workspace { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); min-width: 0; height: 100dvh; }
-.list-pane { position: relative; min-width: 0; height: 100dvh; overflow-y: auto; padding: 24px 20px 48px; border-right: 1px solid var(--line); }
-.reader-pane { min-width: 0; height: 100dvh; overflow-y: auto; padding: 24px 36px 64px; }
-.reader-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-.reader-placeholder { display: grid; place-items: center; height: 100%; color: var(--muted); }
+.shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: 28px 20px;
+  background: #181b1d;
+  border-right: 1px solid var(--line);
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  min-width: 0;
+  height: 100dvh;
+}
+.list-pane {
+  position: relative;
+  min-width: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: 24px 20px 48px;
+  border-right: 1px solid var(--line);
+}
+.reader-pane {
+  min-width: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: 24px 36px 64px;
+}
+.reader-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.reader-placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--muted);
+}
 .list-pane header { position: relative; }
 
-
-.article.selected { background: #222b26; border-left: 2px solid var(--accent); padding-left: 10px; }
+.article.selected {
+  background: #222b26;
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+}
 .article.keyboard-cursor { outline: 1px solid var(--accent); outline-offset: -1px; }
-.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.shortcuts-hint { margin-top: 18px; padding: 4px 8px; color: var(--muted); font-size: 12px; }
-.shortcuts-dialog { width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.shortcuts-hint {
+  margin-top: 18px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.shortcuts-dialog {
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
 .shortcuts-dialog::backdrop { background: #0009; }
 .shortcuts-dialog header { margin-bottom: 12px; }
 .shortcuts-dialog h2 { margin: 0; font-size: 18px; }
-.shortcuts-dialog dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; margin: 0; }
+.shortcuts-dialog dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
 .shortcuts-dialog dd { margin: 0; }
 .article[aria-busy="true"] { opacity: .6; }
-.workspace-error { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: calc(100vw - 32px); padding: 12px 18px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: #f0a69c; }
-#bulk-read-toast:not(:empty) { position: fixed; top: 16px; right: 16px; z-index: 5; max-width: calc(100vw - 32px); padding: 12px 18px; border: 1px solid var(--accent); border-radius: 5px; background: var(--surface); color: var(--text); }
-.list-pane .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
+.workspace-error {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: calc(100vw - 32px);
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  color: #f0a69c;
+}
+#bulk-read-toast:not(:empty) {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+  max-width: calc(100vw - 32px);
+  padding: 12px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+.list-pane .article-bottom {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+}
 .list-pane .article h2 { font-size: 14px; }
-.heading { margin: 0; font-size: 18px; font-weight: 500; }
+.heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
 .sidebar .brand { display: inline-block; margin-bottom: 12px; }
 .sidebar .feeds { margin: 0; }
-.sidebar .feeds h2 { margin: 0 0 8px; font-size: 12px; color: var(--muted); font-weight: 500; }
-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.sidebar .feeds h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
 .brand { font-size: 18px; font-weight: 650; }
-.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 
-
-
-
-
-
-
-
-label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .hint, .muted { color: var(--muted); font-size: 12px; }
 .hint { margin: 0; }
-.count { margin-left: 5px; font-size: 12px; color: var(--muted); }
-.search { display: flex; gap: 6px; margin-bottom: 14px; }
-.feeds { margin: 14px 0 22px; color: var(--muted); font-size: 12px; }
+.count {
+  margin-left: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.search {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.feeds {
+  margin: 14px 0 22px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .feeds > summary { width: fit-content; }
 .manage-feeds-button { margin-top: 8px; }
-.subscription-manager { width: min(1040px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: clamp(16px, 3vw, 28px); border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+.subscription-manager {
+  width: min(1040px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
 .subscription-manager::backdrop { background: #0009; }
 .subscription-manager h2, .subscription-manager h3 { margin: 0; overflow-wrap: anywhere; }
 .subscription-manager h2 { font-size: 20px; }
 .subscription-manager header { margin-bottom: 12px; }
-.folder-create, .folder-edit form { display: flex; align-items: end; gap: 8px; margin: 12px 0; }
+.folder-create, .folder-edit form {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin: 12px 0;
+}
 .folder-create { flex-wrap: wrap; }
 .folder-create select { width: 100%; padding: 8px; }
 .folder-create label, .folder-edit label { flex: 1; min-width: 0; }
-.folder-panes { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 16px; margin-top: 20px; }
+.folder-panes {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr);
+  gap: 16px;
+  margin-top: 20px;
+}
 .folder-pane { min-width: 0; }
 .folder-pane > h3 { margin-bottom: 8px; font-size: 14px; }
-.folder-pane-scroll { max-height: 50dvh; overflow: auto; overscroll-behavior: contain; padding: 2px; }
+.folder-pane-scroll {
+  max-height: 50dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+}
 @media (max-width: 600px) {
   .folder-panes { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .folder-pane-scroll { max-height: 25dvh; }
 }
-.folder-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; align-items: start; }
-.folder-card { min-width: 0; min-height: 116px; padding: 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
-.folder-card-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.folder-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.folder-card {
+  min-width: 0;
+  min-height: 116px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.folder-card-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
 .folder-order-buttons { display: flex; gap: 4px; }
 .folder-order-buttons button { padding: 2px 7px; }
 .folder-order-buttons button:disabled { opacity: .4; cursor: default; }
 .folder-card h3 { font-size: 14px; }
-.folder-card ul { list-style: none; padding: 0; margin: 10px 0 0; }
-.managed-feed-row { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+.folder-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.managed-feed-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 8px;
+}
 .managed-feed-row button { padding: 2px 7px; font-size: 12px; }
 .managed-feed-fetch { display: block; margin-top: 2px; }
-.folder-card li { padding: 6px 8px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.folder-card li {
+  padding: 6px 8px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
 .managed-feed-title::before { content: "⋮⋮ "; color: var(--muted); }
 .manager-tools { margin-top: 16px; }
-.manager-tools form { display: grid; gap: 8px; max-width: 480px; margin-top: 8px; }
+.manager-tools form {
+  display: grid;
+  gap: 8px;
+  max-width: 480px;
+  margin-top: 8px;
+}
 .manager-tools form button { justify-self: start; }
-.folder-edit { margin-top: 8px; color: var(--muted); font-size: 12px; }
+.folder-edit {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .managed-feed-title.dragging { opacity: .45; }
 [data-feed-drag] { cursor: grab; }
 [data-folder-drop].drop-target { background: #272d29; outline: 2px solid var(--accent); }
 .feed-list { padding: 4px 0 8px; }
-.feed-list .all-folders { display: block; margin-bottom: 6px; padding: 5px 8px 5px 24px; border-radius: 6px; background: var(--surface); color: var(--text); font-size: 15px; font-weight: 600; }
+.feed-list .all-folders {
+  display: block;
+  margin-bottom: 6px;
+  padding: 5px 8px 5px 24px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
 [data-sidebar-folder] { margin-bottom: 6px; }
-[data-sidebar-folder] > summary { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; border-radius: 6px; background: var(--surface); }
+[data-sidebar-folder] > summary {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  border-radius: 6px;
+  background: var(--surface);
+}
 [data-sidebar-folder] > summary::-webkit-details-marker { display: none; }
-[data-sidebar-folder] > summary::before { content: ""; justify-self: center; width: 6px; height: 6px; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); }
+[data-sidebar-folder] > summary::before {
+  content: "";
+  justify-self: center;
+  width: 6px;
+  height: 6px;
+  border: solid var(--muted);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+}
 [data-sidebar-folder][open] > summary::before { transform: translateY(-2px) rotate(45deg); }
-[data-sidebar-folder] > summary > a, .feed-list .feed > a { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 5px 8px; border-radius: 6px; line-height: 1.45; overflow-wrap: anywhere; }
-[data-sidebar-folder] > summary > a { padding-inline-start: 0; color: var(--text); font-size: 15px; font-weight: 600; }
-.feed-list .feed { margin-inline-start: 11px; padding-inline-start: 8px; border-inline-start: 1px solid var(--line); }
+[data-sidebar-folder] > summary > a, .feed-list .feed > a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+[data-sidebar-folder] > summary > a {
+  padding-inline-start: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+.feed-list .feed {
+  margin-inline-start: 11px;
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--line);
+}
 .feed-list .feed > a { color: var(--muted); font-size: 14px; }
 .feed-list a:hover { color: var(--text); background: #272d29; }
 .feed-list a[aria-current="page"] { color: var(--accent); background: #272d29; }
-.unread-badge { flex: none; min-width: 22px; padding: 1px 6px; border-radius: 999px; background: var(--accent); color: var(--bg); text-align: center; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.error { display: block; color: #f0a69c; overflow-wrap: anywhere; margin-top: 5px; }
-.notice { margin-bottom: 18px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; color: var(--accent); }
-.results { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
-.sort-options { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; font-size: 12px; }
+.unread-badge {
+  flex: none;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.error {
+  display: block;
+  color: #f0a69c;
+  overflow-wrap: anywhere;
+  margin-top: 5px;
+}
+.notice {
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--accent);
+}
+.results {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.sort-options {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
 .result-filters { flex-direction: column; margin-bottom: 18px; }
 .sort-options a { padding: 2px 8px; }
 .sort-options a[aria-current] { background: var(--surface); border-color: var(--accent); }
-.results h1 { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.results h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
 .article { padding: 16px 0; border-bottom: 1px solid var(--line); }
-.article h2 { margin: 0 0 5px; font-size: 16px; font-weight: 600; line-height: 1.65; overflow-wrap: anywhere; }
+.article h2 {
+  margin: 0 0 5px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
 .article.read h2 { font-weight: 400; color: var(--muted); }
-.article-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.article-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
 .actions { gap: 6px; }
 .actions button, .actions .button { padding: 3px 8px; font-size: 12px; }
-.actions .star { min-width: 32px; font-size: 17px; line-height: 1.5; }
+.actions .star {
+  min-width: 32px;
+  font-size: 17px;
+  line-height: 1.5;
+}
 .favorite { color: #e6c677; }
-.empty { padding: 48px 0; text-align: center; color: var(--muted); }
+.empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--muted);
+}
 .auto-paging { margin-top: 24px; text-align: center; }
 .bulk-read { margin-top: 24px; text-align: center; }
 .bulk-read [aria-disabled="true"] { opacity: .6; cursor: default; }
@@ -153,20 +468,63 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .bulk-read .keyboard-cursor { outline: 2px solid var(--accent); outline-offset: 3px; }
 .auto-paging + .bulk-read { display: none; }
 .reader { max-width: 720px; margin: 24px auto; }
-.reader h1 { font-size: 26px; line-height: 1.65; margin: 14px 0 20px; overflow-wrap: anywhere; }
-.body { overflow-wrap: anywhere; line-height: 1.95; margin-top: 32px; font-size: 16px; }
+.reader h1 {
+  font-size: 26px;
+  line-height: 1.65;
+  margin: 14px 0 20px;
+  overflow-wrap: anywhere;
+}
+.body {
+  overflow-wrap: anywhere;
+  line-height: 1.95;
+  margin-top: 32px;
+  font-size: 16px;
+}
 .body.plain { white-space: pre-wrap; }
 .body p, .body ul, .body ol, .body blockquote, .body figure, .body pre { margin: 1.3em 0; }
-.body img { display: block; max-width: 100%; height: auto; border-radius: 5px; margin: 18px auto; }
-.body a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 5px;
+  margin: 18px auto;
+}
+.body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .body h2, .body h3, .body h4 { line-height: 1.5; margin: 1.8em 0 .7em; }
 .body h2 { font-size: 23px; } .body h3 { font-size: 20px; }
-.body blockquote { border-left: 3px solid var(--line); padding-left: 18px; color: var(--muted); }
-.body pre { overflow-x: auto; padding: 16px; border-radius: 5px; background: var(--surface); line-height: 1.6; }
-.body code { font-size: .9em; background: var(--surface); padding: 2px 4px; }
+.body blockquote {
+  border-left: 3px solid var(--line);
+  padding-left: 18px;
+  color: var(--muted);
+}
+.body pre {
+  overflow-x: auto;
+  padding: 16px;
+  border-radius: 5px;
+  background: var(--surface);
+  line-height: 1.6;
+}
+.body code {
+  font-size: .9em;
+  background: var(--surface);
+  padding: 2px 4px;
+}
 .body pre code { padding: 0; }
-.body figcaption { text-align: center; font-size: 12px; color: var(--muted); }
-.body table { display: block; overflow-x: auto; border-collapse: collapse; max-width: 100%; }
+.body figcaption {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.body table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  max-width: 100%;
+}
 .body th, .body td { border: 1px solid var(--line); padding: 8px 12px; }
 .body hr { border: 0; border-top: 1px solid var(--line); }
 .content-source { margin-top: 16px; }
@@ -178,19 +536,38 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
  .has-detail .list-pane { display: none; }
 }
 @media (max-width: 600px) {
-  .shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
+  .shell {
+    grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
+  }
   .workspace { height: auto; }
-  .list-pane { height: auto; min-height: 60dvh; overflow: visible; padding: 20px 16px 32px; }
+  .list-pane {
+    height: auto;
+    min-height: 60dvh;
+    overflow: visible;
+    padding: 20px 16px 32px;
+  }
   .reader-pane { padding: 20px 16px 32px; }
   .has-detail .sidebar { display: none; }
   .has-detail .workspace, .has-detail .reader-pane { height: 100dvh; }
   .reader-toolbar { margin-bottom: 16px; }
-  .sidebar { position: static; height: auto; padding: 18px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 18px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
   .sidebar .feed-list { max-height: 180px; overflow-y: auto; }
 
   header { margin-bottom: 18px; }
 
-  .article-bottom { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .article-bottom {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
   .article h2 { font-size: 15px; }
   .reader h1 { font-size: 22px; }
 }
@@ -217,100 +594,125 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
   <section class="feeds" aria-label="購読フィード">
     <h2>購読フィード <span class="count">{{len .Feeds}}</span></h2>
     <div class="feed-list">
-    <a class="all-folders" href="/?{{if .Filter}}view={{.Filter}}{{end}}{{if .NewestFirst}}{{if .Filter}}&amp;{{end}}sort=newest{{end}}" data-workspace-link data-sidebar-scope {{if and (eq .FeedID 0) (not .Folder)}}aria-current="page"{{end}}>すべて</a>
-    <div data-folder-order-list>
-    {{range .Folders}}
-      {{$folder := .}}
-      <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}"><summary data-folder-drop="{{.ID}}"><a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" data-workspace-link data-sidebar-scope {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}><span>{{.Name}}</span>{{template "unread-badge" index $.FolderUnread .ID}}</a></summary>
-      {{range $.Feeds}}{{if eq .FolderID $folder.ID}}      <div class="feed">
-          <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
-      </div>
-{{end}}{{end}}
-      </details>
-    {{end}}
-    </div>
-    <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0"><summary data-folder-drop="0"><a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}{{if .NewestFirst}}&amp;sort=newest{{end}}" data-workspace-link data-sidebar-scope {{if eq .Folder "0"}}aria-current="page"{{end}}><span>未分類</span>{{template "unread-badge" index .FolderUnread 0}}</a></summary>
-    {{range .Feeds}}{{if eq .FolderID 0}}      <div class="feed">
-          <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}" href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
-      </div>
-{{end}}{{end}}
-    </details>
-    <button type="button" class="manage-feeds-button" data-manage-feeds>購読を管理</button>
-    <a class="button manage-feeds-button" href="/admin/database">DB管理</a>
-    <dialog class="subscription-manager" aria-labelledby="manage-feeds-title">
-      <header>
-        <h2 id="manage-feeds-title">購読を管理</h2>
-        <button type="button" data-close-manager>閉じる</button>
-      </header>
-      {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
-      <p class="hint">フィードを移動先のフォルダーにドラッグしてください。</p>
-      <form class="folder-create" method="post" action="/feeds">
-        <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-        <label>フィードURL<input type="url" name="url" required placeholder="https://example.com/feed.xml" maxlength="4096"></label>
-        <label>フォルダー<select name="folder"><option value="0">未分類</option>{{range .Folders}}<option value="{{.ID}}" {{if eq $.Folder (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
-        <button>購読する</button>
-      </form>
-      <form class="folder-create" method="post" action="/folders/create">
-        <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-        <label>新規フォルダー<input name="name" required></label><button>作成</button>
-      </form>
-      <div class="folder-panes">
-        <section class="folder-pane" aria-labelledby="unfiled-heading">
-          <h3 id="unfiled-heading">未分類</h3>
-          <div class="folder-pane-scroll folder-card" data-manager-pane="unfiled" data-folder-drop="0" tabindex="0" aria-labelledby="unfiled-heading">
-          <ul>{{range .Feeds}}{{if eq .FolderID 0}}{{template "managed-feed" .}}{{end}}{{end}}</ul>
-          </div>
-        </section>
-        <section class="folder-pane" aria-labelledby="folders-heading">
-          <h3 id="folders-heading">フォルダー</h3>
-          <div class="folder-pane-scroll" data-manager-pane="folders" tabindex="0" aria-labelledby="folders-heading">
-          <div class="folder-board" data-folder-order-list>
+      <a class="all-folders"
+         href="/?{{if .Filter}}view={{.Filter}}{{end}}{{if .NewestFirst}}{{if .Filter}}&amp;{{end}}sort=newest{{end}}"
+         data-workspace-link data-sidebar-scope
+         {{if and (eq .FeedID 0) (not .Folder)}}aria-current="page"{{end}}>すべて</a>
+      <div data-folder-order-list>
         {{range .Folders}}
-        {{$folder := .}}
-        <section class="folder-card" data-folder-drop="{{.ID}}" data-sortable-folder="{{.ID}}">
-          <div class="folder-card-header">
-            <h3>{{.Name}}</h3>
-            <div class="folder-order-buttons">
-              <button type="button" data-folder-step="-1" aria-label="「{{.Name}}」を前に移動">←</button>
-              <button type="button" data-folder-step="1" aria-label="「{{.Name}}」を後ろに移動">→</button>
-            </div>
-          </div>
-          <ul>{{range $.Feeds}}{{if eq .FolderID $folder.ID}}{{template "managed-feed" .}}{{end}}{{end}}</ul>
-          <details class="folder-edit">
-            <summary>フォルダー設定</summary>
-            <form method="post" action="/folders/rename/{{.ID}}">
-              <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
-              <label>フォルダー名<input name="name" value="{{.Name}}" required></label><button>改名</button>
-            </form>
-            <form method="post" action="/folders/delete/{{.ID}}"><button>削除してフィードを未分類へ戻す</button></form>
+          {{$folder := .}}
+          <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}">
+            <summary data-folder-drop="{{.ID}}">
+              <a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}"
+                 data-workspace-link data-sidebar-scope {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}><span>{{.Name}}</span>{{template "unread-badge" index $.FolderUnread .ID}}</a>
+            </summary>
+            {{range $.Feeds}}
+              {{if eq .FolderID $folder.ID}}
+                <div class="feed">
+                  <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}"
+                     href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
+                </div>
+              {{end}}
+            {{end}}
           </details>
-        </section>
-        {{else}}<p class="hint">フォルダーを作成すると、ここに表示されます。</p>{{end}}
-          </div>
-          </div>
-        </section>
+        {{end}}
       </div>
-      <details class="manager-tools"><summary>OPML</summary>
-        <section aria-label="OPMLの読み込みと書き出し">
-          <form method="post" action="/feeds/import" enctype="multipart/form-data">
-            <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-            <label>OPMLファイル<input type="file" name="opml" accept=".opml,.xml,text/xml,application/xml,text/x-opml" required></label>
-            <button>インポート</button>
-            <p class="hint">既存の購読に追加します。2MB・1000フィードまで。</p>
-          </form>
-          <p><a class="button" href="/feeds/export.opml" download>OPMLをエクスポート</a></p>
-        </section>
+      <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0">
+        <summary data-folder-drop="0">
+          <a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}{{if .NewestFirst}}&amp;sort=newest{{end}}"
+             data-workspace-link data-sidebar-scope {{if eq .Folder "0"}}aria-current="page"{{end}}><span>未分類</span>{{template "unread-badge" index .FolderUnread 0}}</a>
+        </summary>
+        {{range .Feeds}}
+          {{if eq .FolderID 0}}
+            <div class="feed">
+              <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}"
+                 href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
+            </div>
+          {{end}}
+        {{end}}
       </details>
-      <details class="manager-tools"><summary>記事URLを登録</summary>
-        <form method="post" action="/articles">
+      <button type="button" class="manage-feeds-button" data-manage-feeds>購読を管理</button>
+      <a class="button manage-feeds-button" href="/admin/database">DB管理</a>
+      <dialog class="subscription-manager" aria-labelledby="manage-feeds-title">
+        <header>
+          <h2 id="manage-feeds-title">購読を管理</h2>
+          <button type="button" data-close-manager>閉じる</button>
+        </header>
+        {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
+        <p class="hint">フィードを移動先のフォルダーにドラッグしてください。</p>
+        <form class="folder-create" method="post" action="/feeds">
           <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-          <label>URL<input type="url" name="url" required placeholder="https://example.com/article" maxlength="4096"></label>
-          <label>タイトル（任意）<input name="title" maxlength="1000"></label>
-          <label>本文・メモ（任意）<textarea name="body" rows="3"></textarea></label>
-          <button>保存する</button>
+          <label>フィードURL<input type="url" name="url" required placeholder="https://example.com/feed.xml" maxlength="4096"></label>
+          <label>フォルダー<select name="folder"><option value="0">未分類</option>{{range .Folders}}<option value="{{.ID}}" {{if eq $.Folder (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+          <button>購読する</button>
         </form>
-      </details>
-    </dialog>
+        <form class="folder-create" method="post" action="/folders/create">
+          <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+          <label>新規フォルダー<input name="name" required></label>
+          <button>作成</button>
+        </form>
+        <div class="folder-panes">
+          <section class="folder-pane" aria-labelledby="unfiled-heading">
+            <h3 id="unfiled-heading">未分類</h3>
+            <div class="folder-pane-scroll folder-card" data-manager-pane="unfiled" data-folder-drop="0" tabindex="0" aria-labelledby="unfiled-heading">
+              <ul>{{range .Feeds}}{{if eq .FolderID 0}}{{template "managed-feed" .}}{{end}}{{end}}</ul>
+            </div>
+          </section>
+          <section class="folder-pane" aria-labelledby="folders-heading">
+            <h3 id="folders-heading">フォルダー</h3>
+            <div class="folder-pane-scroll" data-manager-pane="folders" tabindex="0" aria-labelledby="folders-heading">
+              <div class="folder-board" data-folder-order-list>
+                {{range .Folders}}
+                {{$folder := .}}
+                <section class="folder-card" data-folder-drop="{{.ID}}" data-sortable-folder="{{.ID}}">
+                  <div class="folder-card-header">
+                    <h3>{{.Name}}</h3>
+                    <div class="folder-order-buttons">
+                      <button type="button" data-folder-step="-1" aria-label="「{{.Name}}」を前に移動">←</button>
+                      <button type="button" data-folder-step="1" aria-label="「{{.Name}}」を後ろに移動">→</button>
+                    </div>
+                  </div>
+                  <ul>{{range $.Feeds}}{{if eq .FolderID $folder.ID}}{{template "managed-feed" .}}{{end}}{{end}}</ul>
+                  <details class="folder-edit">
+                    <summary>フォルダー設定</summary>
+                    <form method="post" action="/folders/rename/{{.ID}}">
+                      <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+                      <label>フォルダー名<input name="name" value="{{.Name}}" required></label>
+                      <button>改名</button>
+                    </form>
+                    <form method="post" action="/folders/delete/{{.ID}}"><button>削除してフィードを未分類へ戻す</button></form>
+                  </details>
+                </section>
+                {{else}}
+                  <p class="hint">フォルダーを作成すると、ここに表示されます。</p>
+                {{end}}
+              </div>
+            </div>
+          </section>
+        </div>
+        <details class="manager-tools">
+          <summary>OPML</summary>
+          <section aria-label="OPMLの読み込みと書き出し">
+            <form method="post" action="/feeds/import" enctype="multipart/form-data">
+              <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+              <label>OPMLファイル<input type="file" name="opml" accept=".opml,.xml,text/xml,application/xml,text/x-opml" required></label>
+              <button>インポート</button>
+              <p class="hint">既存の購読に追加します。2MB・1000フィードまで。</p>
+            </form>
+            <p><a class="button" href="/feeds/export.opml" download>OPMLをエクスポート</a></p>
+          </section>
+        </details>
+        <details class="manager-tools">
+          <summary>記事URLを登録</summary>
+          <form method="post" action="/articles">
+            <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+            <label>URL<input type="url" name="url" required placeholder="https://example.com/article" maxlength="4096"></label>
+            <label>タイトル（任意）<input name="title" maxlength="1000"></label>
+            <label>本文・メモ（任意）<textarea name="body" rows="3"></textarea></label>
+            <button>保存する</button>
+          </form>
+        </details>
+      </dialog>
     </div>
   </section>
   <button type="button" class="shortcuts-hint" data-show-shortcuts aria-haspopup="dialog" aria-controls="shortcuts-dialog" aria-keyshortcuts="?"><kbd>?</kbd> ショートカット一覧</button>
@@ -323,7 +725,27 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
 
   <div class="results">
-    <h1>{{if .Query}}「{{.Query}}」の検索結果{{else if .FolderName}}{{.FolderName}}{{else if eq .Filter "unread"}}未読{{else if eq .Filter "history"}}閲覧履歴{{else if eq .Filter "read"}}既読{{else if eq .Filter "favorites"}}お気に入り{{else if ne .FeedID 0}}{{range .Feeds}}{{if eq $.FeedID .ID}}{{.Title}}{{end}}{{end}}{{else}}すべての記事{{end}}</h1>
+    <h1>
+      {{- if .Query -}}
+        「{{.Query}}」の検索結果
+      {{- else if .FolderName -}}
+        {{.FolderName}}
+      {{- else if eq .Filter "unread" -}}
+        未読
+      {{- else if eq .Filter "history" -}}
+        閲覧履歴
+      {{- else if eq .Filter "read" -}}
+        既読
+      {{- else if eq .Filter "favorites" -}}
+        お気に入り
+      {{- else if ne .FeedID 0 -}}
+        {{- range .Feeds -}}
+          {{- if eq $.FeedID .ID -}}{{.Title}}{{- end -}}
+        {{- end -}}
+      {{- else -}}
+        すべての記事
+      {{- end -}}
+    </h1>
     <span class="muted">{{.Result.Total}}件</span>
   </div>
   {{if ne .Filter "history"}}
@@ -339,11 +761,15 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
       <div class="meta"><span>{{.SourceName}}</span>{{if eq $.Filter "history"}}<time datetime="{{.LastOpenedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .LastOpenedAt}}</time>{{else}}<time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time>{{end}}</div>
       <div class="actions">
         <form method="post" action="/articles/{{.ID}}/state">
-          <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
+          <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+          <input type="hidden" name="kind" value="read">
+          <input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
           <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
         </form>
         <form method="post" action="/articles/{{.ID}}/state">
-          <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
+          <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+          <input type="hidden" name="kind" value="favorite">
+          <input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
           <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
         </form>
         <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
@@ -417,17 +843,36 @@ label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     <div class="actions">
       <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
       <form method="post" action="/articles/{{.ID}}/state">
-        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="read"><input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
+        <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+        <input type="hidden" name="kind" value="read">
+        <input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
         <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
       </form>
       <form method="post" action="/articles/{{.ID}}/state">
-        <input type="hidden" name="return_to" value="{{$.ReturnTo}}"><input type="hidden" name="kind" value="favorite"><input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
+        <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+        <input type="hidden" name="kind" value="favorite">
+        <input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
         <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
       </form>
     </div>
     {{if not .FullFetchedAt}}<p class="muted" role="status">{{if .FullFetchError}}本文の自動取得に失敗しました。後で再試行します。{{else}}本文は自動取得され次第、ここに表示されます。{{end}}</p>{{end}}
     <p class="muted content-source">{{if .FullFetchedAt}}元ページから取得した本文{{else if .SourceID}}RSSに含まれる本文・要約{{else}}登録した本文・メモ{{end}}</p>
-    {{$body := richArticle .}}{{if $body}}<div class="body">{{$body}}</div>{{else}}<div class="body plain">{{if .FullBodyText}}{{.FullBodyText}}{{else if .BodyText}}{{.BodyText}}{{else}}{{if .FullFetchError}}本文を表示できませんでした。上の「元記事」からお読みください。{{else}}本文を取得しています。上の「元記事」からも読めます。{{end}}{{end}}</div>{{end}}
+    {{$body := richArticle .}}
+    {{if $body}}
+      <div class="body">{{$body}}</div>
+    {{else}}
+      <div class="body plain">
+        {{- if .FullBodyText -}}
+          {{.FullBodyText}}
+        {{- else if .BodyText -}}
+          {{.BodyText}}
+        {{- else if .FullFetchError -}}
+          本文を表示できませんでした。上の「元記事」からお読みください。
+        {{- else -}}
+          本文を取得しています。上の「元記事」からも読めます。
+        {{- end -}}
+      </div>
+    {{end}}
   {{end}}
   </article>
 

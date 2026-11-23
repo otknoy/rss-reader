@@ -39,7 +39,16 @@ func TestCrossOriginMutationRejected(t *testing.T) {
 
 func TestTemplateEscapesArticleContent(t *testing.T) {
 	w := httptest.NewRecorder()
-	render(w, view{Result: articles.Result{Items: []articles.Article{{ID: 1, Title: `<script>alert(1)</script>`, BodyText: `<img src=x onerror=alert(2)>`, URL: "https://example.com"}}, Page: 1, Pages: 1}})
+	render(w, view{Result: articles.Result{
+		Items: []articles.Article{{
+			ID:       1,
+			Title:    `<script>alert(1)</script>`,
+			BodyText: `<img src=x onerror=alert(2)>`,
+			URL:      "https://example.com",
+		}},
+		Page:  1,
+		Pages: 1,
+	}})
 	body := w.Body.String()
 	if strings.Contains(body, "<script>") || strings.Contains(body, "<img src=x") {
 		t.Fatal("article content was rendered as HTML")
@@ -56,7 +65,13 @@ func TestArticleURLPreservesListContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := parsed.Query()
-	if parsed.Path != "/" || q.Get("article") != "42" || q.Get("q") != "Go 言語" || q.Get("feed") != "3" || q.Get("view") != "unread" || q.Get("page") != "2" || q.Has("message") {
+	if parsed.Path != "/" ||
+		q.Get("article") != "42" ||
+		q.Get("q") != "Go 言語" ||
+		q.Get("feed") != "3" ||
+		q.Get("view") != "unread" ||
+		q.Get("page") != "2" ||
+		q.Has("message") {
 		t.Fatalf("bad selection URL: %s", selected)
 	}
 	closed, _ := url.Parse(articleURL(selected, 0))
@@ -69,11 +84,29 @@ func TestArticleURLPreservesListContext(t *testing.T) {
 }
 
 func TestWorkspaceIncludesListAndReader(t *testing.T) {
-	item := articles.Article{ID: 42, URL: "https://example.com/entry", Title: "選択中の記事", BodyText: "本文"}
+	item := articles.Article{
+		ID:       42,
+		URL:      "https://example.com/entry",
+		Title:    "選択中の記事",
+		BodyText: "本文",
+	}
 	w := httptest.NewRecorder()
-	render(w, view{Detail: &item, ListURL: "/?view=unread", ReturnTo: "/?view=unread&article=42", Result: articles.Result{Items: []articles.Article{item}}})
+	render(w, view{
+		Detail:   &item,
+		ListURL:  "/?view=unread",
+		ReturnTo: "/?view=unread&article=42",
+		Result:   articles.Result{Items: []articles.Article{item}},
+	})
 	body := w.Body.String()
-	for _, part := range []string{`id="list-pane"`, `id="reader-pane"`, `data-reading-id="42"`, `data-article-id="42"`, `aria-current="true"`, `data-workspace-link`, `src="/assets/reader.js"`} {
+	for _, part := range []string{
+		`id="list-pane"`,
+		`id="reader-pane"`,
+		`data-reading-id="42"`,
+		`data-article-id="42"`,
+		`aria-current="true"`,
+		`data-workspace-link`,
+		`src="/assets/reader.js"`,
+	} {
 		if !strings.Contains(body, part) {
 			t.Errorf("missing %s", part)
 		}
@@ -87,7 +120,9 @@ func TestWorkspaceScript(t *testing.T) {
 	app := &application{}
 	w := httptest.NewRecorder()
 	app.routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/assets/reader.js", nil))
-	if w.Code != http.StatusOK || !strings.Contains(w.Header().Get("Content-Type"), "javascript") || !strings.Contains(w.Header().Get("Content-Security-Policy"), "script-src 'self'") {
+	if w.Code != http.StatusOK ||
+		!strings.Contains(w.Header().Get("Content-Type"), "javascript") ||
+		!strings.Contains(w.Header().Get("Content-Security-Policy"), "script-src 'self'") {
 		t.Fatalf("script response: %d %v", w.Code, w.Header())
 	}
 }

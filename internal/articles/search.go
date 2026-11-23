@@ -39,15 +39,34 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	if r.Page < 1 {
 		r.Page = 1
 	}
+
 	// Escape LIKE metacharacters so user queries are literal substring searches.
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(q.Text)) + "%"
-	where := ` WHERE deleted_at IS NULL AND ($1='%%' OR title ILIKE $1 OR body_text ILIKE $1 OR EXISTS (SELECT 1 FROM articles.full_contents f WHERE f.article_id=entries.id AND f.body_text ILIKE $1)) AND ($2::bigint=0 OR source_id=$2) AND ($4::bigint[] IS NULL OR source_id=ANY($4::bigint[])) AND ($3='' OR ($3='unread' AND NOT is_read) OR ($3='read' AND is_read) OR ($3='favorites' AND favorite) OR ($3='unread-favorites' AND NOT is_read AND favorite))`
+	where := ` WHERE deleted_at IS NULL
+		AND (
+			$1 = '%%' OR title ILIKE $1 OR body_text ILIKE $1
+			OR EXISTS (
+				SELECT 1 FROM articles.full_contents f
+				WHERE f.article_id = entries.id AND f.body_text ILIKE $1
+			)
+		)
+		AND ($2::bigint = 0 OR source_id = $2)
+		AND ($4::bigint[] IS NULL OR source_id = ANY($4::bigint[]))
+		AND (
+			$3 = ''
+			OR ($3 = 'unread' AND NOT is_read)
+			OR ($3 = 'read' AND is_read)
+			OR ($3 = 'favorites' AND favorite)
+			OR ($3 = 'unread-favorites' AND NOT is_read AND favorite)
+		)`
 	args := []any{pattern, q.FeedID, q.View, q.FeedIDs}
+
 	history := q.View == "history"
 	if history {
 		where += " AND last_opened_at IS NOT NULL"
 		args[2] = ""
 	}
+
 	descending := q.NewestFirst != (q.AnchorID > 0 && q.BeforeAnchor)
 	order, compare := "published_at ASC, id ASC", ">"
 	if descending {
@@ -88,6 +107,7 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 		r.HasPrevious, r.HasNext = r.Page > 1, r.Page < r.Pages
 		offset = (r.Page - 1) * pageSize
 	}
+
 	args = append(args, limit, offset)
 	projection := listColumns
 	if history {
@@ -99,9 +119,19 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 		return r, err
 	}
 	defer func() { err = errors.Join(err, rows.Close()) }()
+
 	for rows.Next() {
 		var a Article
-		dest := []any{&a.ID, &a.SourceID, &a.SourceName, &a.URL, &a.Title, &a.PublishedAt, &a.IsRead, &a.Favorite}
+		dest := []any{
+			&a.ID,
+			&a.SourceID,
+			&a.SourceName,
+			&a.URL,
+			&a.Title,
+			&a.PublishedAt,
+			&a.IsRead,
+			&a.Favorite,
+		}
 		if history {
 			dest = append(dest, &a.LastOpenedAt)
 		}
@@ -110,6 +140,7 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 		}
 		r.Items = append(r.Items, a)
 	}
+
 	if history && len(r.Items) > pageSize {
 		r.HasNext = true
 		r.Items = r.Items[:pageSize]

@@ -6,18 +6,49 @@
 <title>DB管理 | RSS Reader</title>
 <style>
   :root { color-scheme: dark; }
-  body { margin: 0; background: #141618; color: #e4e6e8; font: 15px/1.6 system-ui, sans-serif; }
-  main { max-width: 1500px; margin: auto; padding: 20px; }
+  body {
+    margin: 0;
+    background: #141618;
+    color: #e4e6e8;
+    font: 15px/1.6 system-ui, sans-serif;
+  }
+  main {
+    max-width: 1500px;
+    margin: auto;
+    padding: 20px;
+  }
   a { color: #a5c7b0; }
-  nav { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
-  nav a { padding: 4px 10px; border: 1px solid #555d60; border-radius: 6px; text-decoration: none; }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-block: 16px;
+  }
+  nav a {
+    padding: 4px 10px;
+    border: 1px solid #555d60;
+    border-radius: 6px;
+    text-decoration: none;
+  }
   nav a[aria-current] { background: #272d29; border-color: #a5c7b0; }
   .table-scroll { overflow-x: auto; margin-block: 16px; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #34383d; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th, td {
+    border: 1px solid #34383d;
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
   th { background: #1c1f22; white-space: nowrap; }
   tbody tr:nth-child(even) td { background: #181b1e; }
-  td code { display: block; max-width: 34ch; max-height: 8em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  td code {
+    display: block;
+    max-width: 34ch;
+    max-height: 8em;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
   .record td { width: 100%; }
   .record td code { max-width: none; max-height: none; }
 </style>
@@ -41,11 +72,21 @@
   <div class="table-scroll" role="region" aria-label="{{.QualifiedTable}} のデータ" tabindex="0">
   {{if .Back}}
     <table class="record" aria-label="{{.QualifiedTable}} のレコード">
-      <thead><tr><th scope="col">列名</th><th scope="col">値</th></tr></thead>
+      <thead>
+        <tr>
+          <th scope="col">列名</th>
+          <th scope="col">値</th>
+        </tr>
+      </thead>
       <tbody>
-      {{range .Rows}}{{range $index, $value := .Values}}
-        <tr><th scope="row"><code>{{index $.Columns $index}}</code></th><td><code>{{$value}}</code></td></tr>
-      {{end}}{{end}}
+        {{range .Rows}}
+          {{range $index, $value := .Values}}
+            <tr>
+              <th scope="row"><code>{{index $.Columns $index}}</code></th>
+              <td><code>{{$value}}</code></td>
+            </tr>
+          {{end}}
+        {{end}}
       </tbody>
     </table>
   {{else}}

@@ -21,13 +21,24 @@ func TestParseNestedOPML(t *testing.T) {
 	if len(parsed.feeds) != 2 || parsed.duplicates != 1 || parsed.skipped != 4 {
 		t.Fatalf("unexpected result: %+v", parsed)
 	}
-	if parsed.feeds[0].Title != "日本語 & Go" || parsed.feeds[0].URL != "https://example.com/feed?a=1&b=2" || parsed.feeds[1].Title != "Atom" {
+	if parsed.feeds[0].Title != "日本語 & Go" ||
+		parsed.feeds[0].URL != "https://example.com/feed?a=1&b=2" ||
+		parsed.feeds[1].Title != "Atom" {
 		t.Fatalf("incorrect attributes: %+v", parsed.feeds)
 	}
 }
 
 func TestOPMLRejectsInvalidDocuments(t *testing.T) {
-	for _, input := range []string{"", `<html><body/></html>`, `<opml/>`, `<opml><body><outline xmlUrl="https://example.com"/></body>`, `<opml><body/></opml><opml><body/></opml>`, `<opml><body/><body/></opml>`, `<!DOCTYPE opml [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><opml><body><outline text="&xxe;"/></body></opml>`, "<opml><body>" + strings.Repeat("<outline>", 65) + strings.Repeat("</outline>", 65) + "</body></opml>"} {
+	for _, input := range []string{
+		"",
+		`<html><body/></html>`,
+		`<opml/>`,
+		`<opml><body><outline xmlUrl="https://example.com"/></body>`,
+		`<opml><body/></opml><opml><body/></opml>`,
+		`<opml><body/><body/></opml>`,
+		`<!DOCTYPE opml [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><opml><body><outline text="&xxe;"/></body></opml>`,
+		"<opml><body>" + strings.Repeat("<outline>", 65) + strings.Repeat("</outline>", 65) + "</body></opml>",
+	} {
 		if _, err := parseOPML(strings.NewReader(input)); !errors.Is(err, ErrInvalidOPML) {
 			t.Errorf("accepted invalid input %q: %v", input, err)
 		}

@@ -17,13 +17,21 @@ func TestFetchFullArticle(t *testing.T) {
 		if req.Header.Get("Accept") == "" {
 			t.Fatal("missing HTML Accept header")
 		}
-		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/html; charset=utf-8"}}, Body: io.NopCloser(strings.NewReader(fixture)), Request: req}, nil
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+			Body:       io.NopCloser(strings.NewReader(fixture)),
+			Request:    req,
+		}, nil
 	})}
 	result, err := service.FetchArticle(context.Background(), "https://example.com/posts/entry")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Text, "全文専用検索語") || !strings.Contains(result.HTML, "<img") || strings.Contains(result.HTML, "<script") || result.URL != "https://example.com/posts/entry" {
+	if !strings.Contains(result.Text, "全文専用検索語") ||
+		!strings.Contains(result.HTML, "<img") ||
+		strings.Contains(result.HTML, "<script") ||
+		result.URL != "https://example.com/posts/entry" {
 		t.Fatalf("unexpected extracted content: %+v", result)
 	}
 }
@@ -42,7 +50,12 @@ func TestFetchArticleRejectsFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			service := New(nil, nil, DefaultInterval)
 			service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-				return &http.Response{StatusCode: tc.status, Header: http.Header{"Content-Type": {tc.contentType}}, Body: io.NopCloser(strings.NewReader(tc.body)), Request: req}, nil
+				return &http.Response{
+					StatusCode: tc.status,
+					Header:     http.Header{"Content-Type": {tc.contentType}},
+					Body:       io.NopCloser(strings.NewReader(tc.body)),
+					Request:    req,
+				}, nil
 			})}
 			_, err := service.FetchArticle(context.Background(), "https://example.com/article")
 			if err == nil {
