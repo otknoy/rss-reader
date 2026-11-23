@@ -563,7 +563,8 @@
 
   function openOriginal() {
     if (keyboardCursorID === bulkReadCursor) return;
-    const scope = document.querySelector(".reader") || articleRows().find(row => row.dataset.articleId === keyboardCursorID);
+    const row = articleRows().find(item => item.dataset.articleId === keyboardCursorID);
+    const scope = row || document.querySelector(".reader");
     scope?.querySelector("[data-original-link]")?.click();
   }
 
