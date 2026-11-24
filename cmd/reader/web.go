@@ -352,7 +352,7 @@ func (a *application) sidebarUnread(ctx context.Context, list []feeds.Feed) (map
 	return unreadByFeed, folderUnread, nil
 }
 
-func (a *application) base(r *http.Request) (view, error) {
+func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 	q := r.URL.Query()
 	feedID, _ := strconv.ParseInt(q.Get("feed"), 10, 64)
 	if feedID < 0 {
@@ -373,7 +373,19 @@ func (a *application) base(r *http.Request) (view, error) {
 	}
 
 	folder := q.Get("folder")
-	sidebar, err := a.loadSidebar(r.Context(), folder)
+	var sidebar sidebar
+	var err error
+	if articlePage {
+		if folder != "" {
+			folderID, parseErr := strconv.ParseInt(folder, 10, 64)
+			if parseErr != nil || folderID < 0 || strconv.FormatInt(folderID, 10) != folder {
+				return view{}, sql.ErrNoRows
+			}
+			sidebar.feedIDs, err = a.feeds.ActiveIDsInFolder(r.Context(), folderID)
+		}
+	} else {
+		sidebar, err = a.loadSidebar(r.Context(), folder)
+	}
 	if err != nil {
 		return view{}, err
 	}
@@ -397,11 +409,6 @@ func (a *application) base(r *http.Request) (view, error) {
 	if err != nil {
 		return view{}, err
 	}
-	unreadByFeed, folderUnread, err := a.sidebarUnread(r.Context(), sidebar.feeds)
-	if err != nil {
-		return view{}, err
-	}
-
 	q.Del("message")
 	q.Del("article")
 	q.Del("added")
@@ -412,6 +419,14 @@ func (a *application) base(r *http.Request) (view, error) {
 		back += "?" + q.Encode()
 	}
 	prev, next := paginationLinks(q, filter, anchoredList, pagination.anchorID, result)
+	if articlePage {
+		return view{Result: result, Filter: filter, Query: r.URL.Query().Get("q"), ListURL: back, ReturnTo: back, Next: next}, nil
+	}
+	unreadByFeed, folderUnread, err := a.sidebarUnread(r.Context(), sidebar.feeds)
+	if err != nil {
+		return view{}, err
+	}
+
 	favoritesOnly, unreadURL, favoritesURL, oldestURL, newestURL := listControlLinks(q, filter, unreadOnly)
 
 	message := ""
@@ -466,9 +481,18 @@ func (a *application) base(r *http.Request) (view, error) {
 }
 
 func (a *application) index(w http.ResponseWriter, r *http.Request) {
-	v, err := a.base(r)
+	w.Header().Add("Vary", "Accept")
+	articlePage := r.Header.Get("Accept") == "text/vnd.rss-reader.article-page+html"
+	v, err := a.base(r, articlePage)
 	if err != nil {
 		fail(w, err)
+		return
+	}
+	if articlePage {
+		w.Header().Set("Content-Type", "text/vnd.rss-reader.article-page+html; charset=utf-8")
+		if err := page.ExecuteTemplate(w, "article-page", v); err != nil {
+			log.Printf("render article page: %v", err)
+		}
 		return
 	}
 	if raw := r.URL.Query().Get("article"); raw != "" {
@@ -499,7 +523,7 @@ func (a *application) detail(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	v, err := a.base(r)
+	v, err := a.base(r, false)
 	if err != nil {
 		fail(w, err)
 		return

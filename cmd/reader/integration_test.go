@@ -958,6 +958,19 @@ func TestPrototypeIntegration(t *testing.T) {
 		if nextUnread.Code != http.StatusOK || !strings.Contains(nextUnread.Body.String(), ">sort-fixture-21</a>") {
 			t.Fatalf("next page lost the remaining unread article: %d", nextUnread.Code)
 		}
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("%s&after=%d", unread, boundary), nil)
+		req.Header.Set("Accept", "text/vnd.rss-reader.article-page+html")
+		fragment := httptest.NewRecorder()
+		app.routes().ServeHTTP(fragment, req)
+		if fragment.Code != http.StatusOK ||
+			!strings.Contains(fragment.Header().Get("Content-Type"), "text/vnd.rss-reader.article-page+html") ||
+			strings.Count(fragment.Body.String(), "data-article-id=") != 1 ||
+			!strings.Contains(fragment.Body.String(), ">sort-fixture-21</a>") ||
+			strings.Contains(fragment.Body.String(), "id=\"reader-pane\"") ||
+			strings.Contains(fragment.Body.String(), "subscription-manager") {
+			t.Fatalf("unexpected article page fragment: %d %s", fragment.Code, fragment.Body.String())
+		}
+
 		reversed := request("GET", fmt.Sprintf("%s&sort=newest&before=%d", unread, boundary), nil)
 		if reversed.Code != http.StatusOK || !strings.Contains(reversed.Body.String(), ">sort-fixture-21</a>") {
 			t.Fatalf("previous page lost the remaining article in newest-first order: %d", reversed.Code)

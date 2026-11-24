@@ -115,3 +115,38 @@ func (s *Store) SetFolderOpen(ctx context.Context, id int64, open bool) error {
 	_, err := s.db.ExecContext(ctx, "INSERT INTO feeds.closed_folders(folder_id) VALUES(NULLIF($1::bigint, 0)) ON CONFLICT DO NOTHING", id)
 	return err
 }
+
+// ActiveIDsInFolder returns active subscriptions in a folder, including the unfiled folder.
+func (s *Store) ActiveIDsInFolder(ctx context.Context, id int64) (ids []int64, err error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT s.id
+		FROM (
+			SELECT id FROM feeds.folders WHERE id = $1
+			UNION ALL SELECT 0 WHERE $1 = 0
+		) f
+		LEFT JOIN feeds.subscriptions s
+			ON s.active AND s.folder_id IS NOT DISTINCT FROM NULLIF(f.id, 0)`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, rows.Close()) }()
+
+	ids = []int64{}
+	found := false
+	for rows.Next() {
+		found = true
+		var feedID sql.NullInt64
+		if err := rows.Scan(&feedID); err != nil {
+			return nil, err
+		}
+		if feedID.Valid {
+			ids = append(ids, feedID.Int64)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, sql.ErrNoRows
+	}
+	return ids, nil
+}

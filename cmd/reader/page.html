@@ -754,34 +754,7 @@ label {
     <a class="button" href="{{.NewestURL}}" data-workspace-link {{if .NewestFirst}}aria-current="true"{{end}}>新しい順</a>
   </nav>
   {{end}}
-  {{range .Result.Items}}
-  <article class="article {{if .IsRead}}read{{end}} {{if $.Detail}}{{if eq $.Detail.ID .ID}}selected{{end}}{{end}}" data-article-id="{{.ID}}">
-    <h2><a href="{{articleURL $.ListURL .ID}}" data-workspace-link {{if $.Detail}}{{if eq $.Detail.ID .ID}}aria-current="true"{{end}}{{end}}>{{.Title}}</a></h2>
-    <div class="article-bottom">
-      <div class="meta"><span>{{.SourceName}}</span>{{if eq $.Filter "history"}}<time datetime="{{.LastOpenedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .LastOpenedAt}}</time>{{else}}<time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time>{{end}}</div>
-      <div class="actions">
-        <form method="post" action="/articles/{{.ID}}/state">
-          <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
-          <input type="hidden" name="kind" value="read">
-          <input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
-          <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
-        </form>
-        <form method="post" action="/articles/{{.ID}}/state">
-          <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
-          <input type="hidden" name="kind" value="favorite">
-          <input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
-          <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
-        </form>
-        <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
-      </div>
-    </div>
-  </article>
-  {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if eq .Filter "history"}}閲覧履歴はまだありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「購読を管理」からフィードを登録できます。{{end}}</p>{{end}}
-  {{if .Next}}
-  <div class="auto-paging">
-    <a class="button" data-next-articles href="{{.Next}}">さらに読み込む</a>
-  </div>
-  {{end}}
+  {{template "article-page" .}}
   {{if and .Result.Items (ne .Filter "read")}}
   <div class="bulk-read">
     <button type="button" data-mark-loaded-read>読み込んだ記事をすべて既読にする</button>
@@ -878,4 +851,35 @@ label {
 
 {{else}}<div class="reader-placeholder">一覧から記事を選択してください</div>{{end}}
 </section>
+{{end}}
+
+{{define "article-page"}}
+  {{range .Result.Items}}
+  <article class="article {{if .IsRead}}read{{end}} {{if $.Detail}}{{if eq $.Detail.ID .ID}}selected{{end}}{{end}}" data-article-id="{{.ID}}">
+    <h2><a href="{{articleURL $.ListURL .ID}}" data-workspace-link {{if $.Detail}}{{if eq $.Detail.ID .ID}}aria-current="true"{{end}}{{end}}>{{.Title}}</a></h2>
+    <div class="article-bottom">
+      <div class="meta"><span>{{.SourceName}}</span>{{if eq $.Filter "history"}}<time datetime="{{.LastOpenedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .LastOpenedAt}}</time>{{else}}<time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time>{{end}}</div>
+      <div class="actions">
+        <form method="post" action="/articles/{{.ID}}/state">
+          <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+          <input type="hidden" name="kind" value="read">
+          <input type="hidden" name="value" value="{{if .IsRead}}false{{else}}true{{end}}">
+          <button>{{if .IsRead}}未読に戻す{{else}}既読にする{{end}}</button>
+        </form>
+        <form method="post" action="/articles/{{.ID}}/state">
+          <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+          <input type="hidden" name="kind" value="favorite">
+          <input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
+          <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
+        </form>
+        <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
+      </div>
+    </div>
+  </article>
+  {{else}}<p class="empty">{{if .Query}}該当する記事はありません。{{else if eq .Filter "history"}}閲覧履歴はまだありません。{{else if .Filter}}該当する記事はありません。{{else}}記事はまだありません。「購読を管理」からフィードを登録できます。{{end}}</p>{{end}}
+  {{if .Next}}
+  <div class="auto-paging">
+    <a class="button" data-next-articles href="{{.Next}}">さらに読み込む</a>
+  </div>
+  {{end}}
 {{end}}

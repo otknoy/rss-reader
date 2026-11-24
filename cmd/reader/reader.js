@@ -473,12 +473,14 @@
       const footer = link.closest(".auto-paging");
       link.setAttribute("aria-busy", "true");
       try {
-        const response = await fetch(link.href, { credentials: "same-origin" });
+        const response = await fetch(link.href, {
+          credentials: "same-origin",
+          headers: { Accept: "text/vnd.rss-reader.article-page+html" },
+        });
         if (!response.ok) throw new Error();
         const html = await response.text();
         if (!link.isConnected) return;
-        const page = new DOMParser().parseFromString(html, "text/html").querySelector("#list-pane");
-        if (!page) throw new Error();
+        const page = new DOMParser().parseFromString(html, "text/html");
 
         const existing = new Set(articleRows().map(row => row.dataset.articleId));
         for (const row of page.querySelectorAll("[data-article-id]")) {
