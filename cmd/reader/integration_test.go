@@ -100,6 +100,106 @@ func TestDatabasePermissionsIntegration(t *testing.T) {
 	}
 }
 
+func TestOPMLExportDuringFolderDeletionIntegration(t *testing.T) {
+	ctx, owner, fdb, _, _ := setupIntegrationDB(t)
+	store := feeds.New(fdb)
+	const folderName = "Export snapshot"
+	const feedURL = "https://example.org/snapshot.xml"
+	if err := store.SaveFolder(ctx, 0, folderName); err != nil {
+		t.Fatal(err)
+	}
+	folders, err := store.Folders(ctx)
+	if err != nil || len(folders) != 1 {
+		t.Fatalf("load test folder: %v, %v", folders, err)
+	}
+	folderID := folders[0].ID
+	if _, err := store.AddToFolder(ctx, feedURL, &folderID); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := owner.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			t.Errorf("release folder lock: %v", err)
+		}
+	}()
+
+	// Block only the folder query, allowing the export to read subscriptions first.
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE feeds.folders IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	var blocker int
+	if err := tx.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&blocker); err != nil {
+		t.Fatal(err)
+	}
+	exportCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	var output bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- store.ExportOPML(exportCtx, &output) }()
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var blocked bool
+		err := owner.QueryRowContext(exportCtx, `SELECT EXISTS (
+			SELECT 1 FROM pg_locks
+			WHERE relation = 'feeds.folders'::regclass AND database = (
+				SELECT oid FROM pg_database WHERE datname = current_database()
+			) AND NOT granted AND $1 = ANY(pg_blocking_pids(pid))
+		)`, blocker).Scan(&blocked)
+		if err != nil {
+			t.Fatalf("wait for export to read folders: %v", err)
+		}
+		if blocked {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("export finished before waiting for the folder lock: %v", err)
+		case <-exportCtx.Done():
+			t.Fatalf("export did not wait for the folder lock: %v", exportCtx.Err())
+		case <-ticker.C:
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM feeds.folders WHERE id=$1`, folderID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-exportCtx.Done():
+		t.Fatalf("wait for export: %v", exportCtx.Err())
+	}
+
+	type outline struct {
+		Name     string    `xml:"text,attr"`
+		URL      string    `xml:"xmlUrl,attr"`
+		Children []outline `xml:"outline"`
+	}
+	var document struct {
+		Outlines []outline `xml:"body>outline"`
+	}
+	if err := xml.Unmarshal(output.Bytes(), &document); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Outlines) != 1 ||
+		document.Outlines[0].Name != folderName ||
+		len(document.Outlines[0].Children) != 1 ||
+		document.Outlines[0].Children[0].URL != feedURL {
+		t.Fatalf("export should contain the original folder and exactly one subscription: %s", &output)
+	}
+}
+
 func TestPrototypeIntegration(t *testing.T) {
 	ctx, owner, fdb, adb, connect := setupIntegrationDB(t)
 	fs, as := feeds.New(fdb), articles.New(adb)
