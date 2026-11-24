@@ -27,6 +27,7 @@ const DefaultInterval = 30 * time.Minute
 type subscriptions interface {
 	List(context.Context) ([]feeds.Feed, error)
 	ListDue(context.Context) ([]feeds.Feed, error)
+	ListDueFeed(context.Context, int64) ([]feeds.Feed, error)
 	Record(context.Context, int64, feeds.FetchResult, time.Duration) error
 	WithRefreshLock(context.Context, func() error) error
 }
@@ -109,34 +110,27 @@ func publicIP(ip netip.Addr) bool {
 }
 
 // Refresh is an explicit manual refresh; it bypasses the due time but uses conditional HTTP.
-func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, false, 0) }
+func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, s.feeds.List) }
 
 // RefreshDue performs one scheduled pass, shared by web polling and future CronJobs.
-func (s *Service) RefreshDue(ctx context.Context) error { return s.refresh(ctx, true, 0) }
+func (s *Service) RefreshDue(ctx context.Context) error { return s.refresh(ctx, s.feeds.ListDue) }
 
 // RefreshFeed attempts the initial fetch of a single due subscription.
 func (s *Service) RefreshFeed(ctx context.Context, id int64) error {
-	return s.refresh(ctx, true, id)
+	return s.refresh(ctx, func(ctx context.Context) ([]feeds.Feed, error) {
+		return s.feeds.ListDueFeed(ctx, id)
+	})
 }
 
-func (s *Service) refresh(ctx context.Context, dueOnly bool, onlyID int64) error {
+func (s *Service) refresh(ctx context.Context, load func(context.Context) ([]feeds.Feed, error)) error {
 	return s.feeds.WithRefreshLock(ctx, func() error {
-		var list []feeds.Feed
-		var err error
-		if dueOnly {
-			list, err = s.feeds.ListDue(ctx)
-		} else {
-			list, err = s.feeds.List(ctx)
-		}
+		list, err := load(ctx)
 		if err != nil {
 			return err
 		}
 
 		var failures []error
 		for _, f := range list {
-			if onlyID != 0 && f.ID != onlyID {
-				continue
-			}
 			if err := ctx.Err(); err != nil {
 				return errors.Join(append(failures, err)...)
 			}

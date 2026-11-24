@@ -248,6 +248,9 @@ func TestPrototypeIntegration(t *testing.T) {
 			if due, err := fs.ListDue(ctx); err != nil || len(due) != 0 {
 				t.Fatalf("duplicate subscription reset due time: %v %v", due, err)
 			}
+			if due, err := fs.ListDueFeed(ctx, feedID); err != nil || len(due) != 0 {
+				t.Fatalf("duplicate subscription is eligible for initial fetch: %v %v", due, err)
+			}
 			metadata.Err = errors.New("temporary fetch failure")
 			if err := fs.Record(ctx, feedID, metadata, 30*time.Minute); err != nil {
 				t.Fatal(err)
@@ -274,11 +277,20 @@ func TestPrototypeIntegration(t *testing.T) {
 		if due, err := fs.ListDue(ctx); err != nil || len(due) != 0 {
 			t.Fatalf("inactive feed scheduled: %v %v", due, err)
 		}
+		if due, err := fs.ListDueFeed(ctx, feedID); err != nil || len(due) != 0 {
+			t.Fatalf("inactive feed is eligible for initial fetch: %v %v", due, err)
+		}
 		if err := fs.Add(ctx, list[0].URL); err != nil {
 			t.Fatal(err)
 		}
 		if due, err := fs.ListDue(ctx); err != nil || len(due) != 1 {
 			t.Fatalf("resubscription not scheduled: %v %v", due, err)
+		}
+		if due, err := fs.ListDueFeed(ctx, feedID); err != nil || len(due) != 1 || due[0].ID != feedID {
+			t.Fatalf("resubscribed feed missing from initial fetch: %v %v", due, err)
+		}
+		if due, err := fs.ListDueFeed(ctx, 0); err != nil || len(due) != 0 {
+			t.Fatalf("unknown ID matched a feed: %v %v", due, err)
 		}
 	})
 	t.Run("cross-process refresh lock", func(t *testing.T) {

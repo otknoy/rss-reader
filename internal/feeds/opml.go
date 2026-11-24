@@ -280,7 +280,7 @@ func (s *Store) exportSnapshot(ctx context.Context) (subscriptions []Feed, folde
 		}
 	}()
 
-	subscriptions, err = list(ctx, tx, false)
+	subscriptions, err = list(ctx, tx, false, nil)
 	if err != nil {
 		return nil, nil, err
 	}

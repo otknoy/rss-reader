@@ -132,6 +132,7 @@ type subscriptionsStub struct {
 	results             []feeds.FetchResult
 	interval            time.Duration
 	listCalls, dueCalls int
+	dueFeedIDs          []int64
 	busy                bool
 }
 
@@ -143,6 +144,16 @@ func (s *subscriptionsStub) List(context.Context) ([]feeds.Feed, error) {
 func (s *subscriptionsStub) ListDue(context.Context) ([]feeds.Feed, error) {
 	s.dueCalls++
 	return s.rows, nil
+}
+
+func (s *subscriptionsStub) ListDueFeed(_ context.Context, id int64) ([]feeds.Feed, error) {
+	s.dueFeedIDs = append(s.dueFeedIDs, id)
+	for _, feed := range s.rows {
+		if feed.ID == id {
+			return []feeds.Feed{feed}, nil
+		}
+	}
+	return nil, nil
 }
 
 func (s *subscriptionsStub) Record(_ context.Context, _ int64, r feeds.FetchResult, interval time.Duration) error {
@@ -198,5 +209,26 @@ func TestRefreshContinuesAfterFeedFailure(t *testing.T) {
 	_ = service.Refresh(context.Background())
 	if source.listCalls != 1 {
 		t.Fatal("manual refresh should list all feeds")
+	}
+}
+
+func TestRefreshFeedLoadsOnlyRequestedSubscription(t *testing.T) {
+	source := &subscriptionsStub{rows: []feeds.Feed{
+		{ID: 1, URL: "https://example.com/other"},
+		{ID: 2, URL: "https://example.com/target"},
+	}}
+	service := New(source, &articleStub{}, DefaultInterval)
+	service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/target" {
+			t.Fatalf("fetched unexpected feed: %s", req.URL)
+		}
+		return &http.Response{StatusCode: 304, Body: http.NoBody, Request: req}, nil
+	})}
+	if err := service.RefreshFeed(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
+	if source.listCalls != 0 || source.dueCalls != 0 ||
+		len(source.dueFeedIDs) != 1 || source.dueFeedIDs[0] != 2 || len(source.results) != 1 {
+		t.Fatalf("unexpected refresh: %+v", source)
 	}
 }

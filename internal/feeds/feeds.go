@@ -77,24 +77,34 @@ func (s *Store) Remove(ctx context.Context, id int64) error {
 
 // List returns active subscriptions.
 func (s *Store) List(ctx context.Context) ([]Feed, error) {
-	return list(ctx, s.db, false)
+	return list(ctx, s.db, false, nil)
 }
 
 // ListDue returns active subscriptions whose next fetch is due.
 func (s *Store) ListDue(ctx context.Context) ([]Feed, error) {
-	return list(ctx, s.db, true)
+	return list(ctx, s.db, true, nil)
+}
+
+// ListDueFeed returns the specified subscription if it is active and due.
+func (s *Store) ListDueFeed(ctx context.Context, id int64) ([]Feed, error) {
+	return list(ctx, s.db, true, &id)
 }
 
 type queryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func list(ctx context.Context, db queryer, dueOnly bool) (out []Feed, err error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, url, title, checked_at, last_error,
+func list(ctx context.Context, db queryer, dueOnly bool, id *int64) (out []Feed, err error) {
+	query := `SELECT id, url, title, checked_at, last_error,
 		ttl_minutes, next_fetch_at, last_success_at, etag, last_modified, COALESCE(folder_id, 0)
 	FROM feeds.subscriptions
-	WHERE active AND (NOT $1 OR next_fetch_at IS NULL OR next_fetch_at <= now())
-	ORDER BY next_fetch_at NULLS FIRST, id`, dueOnly)
+	WHERE active AND (NOT $1 OR next_fetch_at IS NULL OR next_fetch_at <= now())`
+	args := []any{dueOnly}
+	if id != nil {
+		query += ` AND id = $2`
+		args = append(args, *id)
+	}
+	rows, err := db.QueryContext(ctx, query+` ORDER BY next_fetch_at NULLS FIRST, id`, args...)
 	if err != nil {
 		return nil, err
 	}
