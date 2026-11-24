@@ -1009,9 +1009,17 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 		boundary := fixture.Items[19].ID
 		firstPage := request("GET", unread, nil)
-		if firstPage.Code != http.StatusOK ||
-			!strings.Contains(firstPage.Body.String(), fmt.Sprintf("after=%d&amp;q=sort-fixture&amp;view=unread", boundary)) {
-			t.Fatalf("unread next link did not use the last article as its anchor: %d", firstPage.Code)
+		nextLink := regexp.MustCompile(`data-next-articles href="([^"]+)"`).FindStringSubmatch(firstPage.Body.String())
+		if firstPage.Code != http.StatusOK || len(nextLink) != 2 {
+			t.Fatalf("unread next link missing: %d", firstPage.Code)
+		}
+		nextURL, err := url.Parse(strings.ReplaceAll(nextLink[1], "&amp;", "&"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if q := nextURL.Query(); q.Get("after") != fmt.Sprint(boundary) ||
+			q.Get("published_at") != fixture.Items[19].PublishedAt.UTC().Format(time.RFC3339Nano) {
+			t.Fatalf("unexpected next page boundary: %s", nextURL)
 		}
 		// Reading every visible row must not skip the remaining unread row on the next page.
 		form := url.Values{"return_to": {unread}}
@@ -1033,7 +1041,14 @@ func TestPrototypeIntegration(t *testing.T) {
 		if nextUnread.Code != http.StatusOK || !strings.Contains(nextUnread.Body.String(), ">sort-fixture-21</a>") {
 			t.Fatalf("next page lost the remaining unread article: %d", nextUnread.Code)
 		}
-		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("%s&after=%d", unread, boundary), nil)
+		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries SET published_at=published_at+interval '2 days' WHERE id=$1`, boundary); err != nil {
+			t.Fatal(err)
+		}
+		nextUnread = request("GET", nextURL.String(), nil)
+		if nextUnread.Code != http.StatusOK || !strings.Contains(nextUnread.Body.String(), ">sort-fixture-21</a>") {
+			t.Fatalf("corrected publication time moved the boundary: %d", nextUnread.Code)
+		}
+		req := httptest.NewRequest(http.MethodGet, nextURL.String(), nil)
 		req.Header.Set("Accept", "text/vnd.rss-reader.article-page+html")
 		fragment := httptest.NewRecorder()
 		app.routes().ServeHTTP(fragment, req)
@@ -1046,7 +1061,13 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("unexpected article page fragment: %d %s", fragment.Code, fragment.Body.String())
 		}
 
-		reversed := request("GET", fmt.Sprintf("%s&sort=newest&before=%d", unread, boundary), nil)
+		reversedURL := *nextURL
+		reversedQuery := reversedURL.Query()
+		reversedQuery.Del("after")
+		reversedQuery.Set("before", fmt.Sprint(boundary))
+		reversedQuery.Set("sort", "newest")
+		reversedURL.RawQuery = reversedQuery.Encode()
+		reversed := request("GET", reversedURL.String(), nil)
 		if reversed.Code != http.StatusOK || !strings.Contains(reversed.Body.String(), ">sort-fixture-21</a>") {
 			t.Fatalf("previous page lost the remaining article in newest-first order: %d", reversed.Code)
 		}

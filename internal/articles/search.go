@@ -12,15 +12,16 @@ import (
 
 // Query selects articles by text, state, feed and page.
 type Query struct {
-	Text, View    string
-	FeedID        int64
-	FeedIDs       []int64
-	Page          int
-	NewestFirst   bool
-	AnchorID      int64
-	BeforeAnchor  bool
-	HistoryBefore time.Time
-	ForwardOnly   bool // Omit totals and detect the next page with one extra row.
+	Text, View        string
+	FeedID            int64
+	FeedIDs           []int64
+	Page              int
+	NewestFirst       bool
+	AnchorID          int64
+	BeforeAnchor      bool
+	HistoryBefore     time.Time
+	AnchorPublishedAt time.Time
+	ForwardOnly       bool // Omit totals and detect the next page with one extra row.
 }
 
 // Result contains a page of articles and aggregate counts.
@@ -91,9 +92,15 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 		}
 		limit++
 	case q.AnchorID > 0:
-		// The boundary row can be read already. Its sort key still anchors the next page.
-		boundary := "(published_at,id) " + compare + " (SELECT published_at,id FROM articles.entries WHERE id=$5)"
-		args = append(args, q.AnchorID)
+		boundary := "(published_at,id) " + compare
+		if q.AnchorPublishedAt.IsZero() {
+			// Older links carry only the boundary article ID.
+			boundary += " (SELECT published_at,id FROM articles.entries WHERE id=$5)"
+			args = append(args, q.AnchorID)
+		} else {
+			boundary += " ($5,$6)"
+			args = append(args, q.AnchorPublishedAt, q.AnchorID)
+		}
 		if forwardOnly {
 			limit++
 		} else {

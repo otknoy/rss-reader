@@ -192,6 +192,7 @@ type listPagination struct {
 	anchorID      int64
 	beforeAnchor  bool
 	historyBefore time.Time
+	publishedAt   time.Time
 }
 
 func parseListPagination(q url.Values, filter string, anchoredList bool) listPagination {
@@ -202,6 +203,7 @@ func parseListPagination(q url.Values, filter string, anchoredList bool) listPag
 		pagination.historyBefore, _ = time.Parse(time.RFC3339Nano, q.Get("opened_before"))
 		pagination.anchorID, _ = strconv.ParseInt(q.Get("after"), 10, 64)
 	case anchoredList:
+		pagination.publishedAt, _ = time.Parse(time.RFC3339Nano, q.Get("published_at"))
 		pagination.anchorID, _ = strconv.ParseInt(q.Get("before"), 10, 64)
 		pagination.beforeAnchor = pagination.anchorID > 0
 		if !pagination.beforeAnchor {
@@ -214,6 +216,7 @@ func parseListPagination(q url.Values, filter string, anchoredList bool) listPag
 // paginationLinks clears pagination parameters from q for subsequent links.
 func paginationLinks(q url.Values, filter string, anchoredList bool, anchorID int64, result articles.Result) (string, string) {
 	prev, next := "", ""
+	q.Del("published_at")
 	if filter == "history" {
 		q.Del("after")
 		q.Del("opened_before")
@@ -231,14 +234,20 @@ func paginationLinks(q url.Values, filter string, anchoredList bool, anchorID in
 		q.Del("after")
 		if len(result.Items) > 0 {
 			if result.HasPrevious {
-				q.Set("before", strconv.FormatInt(result.Items[0].ID, 10))
+				first := result.Items[0]
+				q.Set("before", strconv.FormatInt(first.ID, 10))
+				q.Set("published_at", first.PublishedAt.UTC().Format(time.RFC3339Nano))
 				prev = "/?" + q.Encode()
 				q.Del("before")
+				q.Del("published_at")
 			}
 			if result.HasNext {
-				q.Set("after", strconv.FormatInt(result.Items[len(result.Items)-1].ID, 10))
+				last := result.Items[len(result.Items)-1]
+				q.Set("after", strconv.FormatInt(last.ID, 10))
+				q.Set("published_at", last.PublishedAt.UTC().Format(time.RFC3339Nano))
 				next = "/?" + q.Encode()
 				q.Del("after")
+				q.Del("published_at")
 			}
 		} else if anchorID > 0 && result.Total > 0 {
 			// Concurrent changes can empty an anchored page. Offer the beginning of the list.
@@ -410,11 +419,12 @@ func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 		FeedIDs: sidebar.feedIDs,
 		Page:    pagination.page,
 
-		NewestFirst:   newestFirst,
-		AnchorID:      pagination.anchorID,
-		BeforeAnchor:  pagination.beforeAnchor,
-		HistoryBefore: pagination.historyBefore,
-		ForwardOnly:   articlePage,
+		NewestFirst:       newestFirst,
+		AnchorID:          pagination.anchorID,
+		BeforeAnchor:      pagination.beforeAnchor,
+		HistoryBefore:     pagination.historyBefore,
+		AnchorPublishedAt: pagination.publishedAt,
+		ForwardOnly:       articlePage,
 	})
 	if err != nil {
 		return view{}, err
