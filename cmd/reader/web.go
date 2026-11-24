@@ -717,34 +717,39 @@ func (a *application) contentStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodPost {
-		viewID := r.Header.Get("X-Article-View-ID")
-		if viewID != "" {
-			var uuid pgtype.UUID
-			if err := uuid.Scan(viewID); err != nil {
-				http.Error(w, "閲覧IDの指定が不正です", http.StatusBadRequest)
+		retry := r.PostForm.Get("retry") == "true"
+		if !retry {
+			viewID := r.Header.Get("X-Article-View-ID")
+			if viewID != "" {
+				var uuid pgtype.UUID
+				if err := uuid.Scan(viewID); err != nil {
+					http.Error(w, "閲覧IDの指定が不正です", http.StatusBadRequest)
+					return
+				}
+				viewID = uuid.String()
+			}
+			if err := a.articles.RecordDisplay(r.Context(), n, viewID); err != nil {
+				fail(w, err)
 				return
 			}
-			viewID = uuid.String()
 		}
-		item, err := a.articles.RecordDisplay(r.Context(), n, viewID)
-		if err != nil {
-			fail(w, err)
+		if err := a.fetcher.FetchContent(r.Context(), a.articles, n, retry); err != nil {
+			log.Printf("fetch opened article %d: %v", n, err)
+		}
+		if retry {
+			redirect(w, r, "")
 			return
 		}
-		if item.FullContentPending {
-			if _, err := a.fetcher.FetchQueuedContent(r.Context(), a.articles, item); err != nil {
-				log.Printf("fetch opened article %d: %v", n, err)
-			}
-		}
 	}
+
 	status, err := a.articles.FullContentStatus(r.Context(), n)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	// Keep upstream error details in storage; the UI only needs to know whether a retry is pending.
+	// Keep upstream error details in storage; the UI only needs to know whether extraction failed.
 	if status.Error != "" {
-		status.Error = "本文の自動取得に失敗しました。後で再試行します。"
+		status.Error = "本文の取得に失敗しました。"
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(status); err != nil {

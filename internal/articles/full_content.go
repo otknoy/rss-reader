@@ -2,6 +2,7 @@ package articles
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 )
 
@@ -26,59 +27,40 @@ func (s *Store) SaveFullContent(ctx context.Context, id int64, content FullConte
 	return affected(result, err)
 }
 
-// PendingFullContent returns one bounded batch of articles awaiting extraction.
-func (s *Store) PendingFullContent(ctx context.Context) (items []Article, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM articles.entries e`+fullContentJoin+`
- WHERE deleted_at IS NULL AND full_next_fetch_at<=now()
- AND (full_fetch_until IS NULL OR full_fetch_until<=now())
- ORDER BY full_next_fetch_at,id LIMIT 10`)
-	if err != nil {
-		return nil, err
+// ClaimFullContent leases a first attempt or an explicit retry and returns the article URL.
+func (s *Store) ClaimFullContent(ctx context.Context, id int64, retry bool) (string, error) {
+	var url string
+	err := s.db.QueryRowContext(ctx, `UPDATE articles.entries e
+		SET full_fetch_until=now()+interval '2 minutes'
+		WHERE id=$1 AND deleted_at IS NULL
+		  AND (full_fetch_until IS NULL OR full_fetch_until<=now())
+		  AND (full_fetch_error <> '') = $2
+		  AND NOT EXISTS (SELECT 1 FROM articles.full_contents f WHERE f.article_id=e.id)
+		RETURNING url`, id, retry).Scan(&url)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
 	}
-	defer func() { err = errors.Join(err, rows.Close()) }()
-	for rows.Next() {
-		item, err := scan(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
+	return url, err
 }
 
-// ClaimFullContent atomically leases a fetch across worker replicas.
-// An abandoned lease expires after two minutes, without holding a DB transaction during HTTP.
-func (s *Store) ClaimFullContent(ctx context.Context, id int64) (bool, error) {
-	result, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET full_fetch_until=now()+interval '2 minutes'
- WHERE id=$1 AND deleted_at IS NULL
- AND (full_fetch_until IS NULL OR full_fetch_until<=now())
- AND full_next_fetch_at<=now()`, id)
-	if err != nil {
-		return false, err
-	}
-	n, err := result.RowsAffected()
-	return n > 0, err
-}
-
-// FailFullContent releases a lease, retaining saved text and delaying automatic retries.
+// FailFullContent releases the lease and records the failure for display.
 func (s *Store) FailFullContent(ctx context.Context, id int64, fetchErr error) error {
-	canceled := errors.Is(fetchErr, context.Canceled)
 	_, err := s.db.ExecContext(ctx, `UPDATE articles.entries SET full_fetch_until=NULL,
- full_next_fetch_at=CASE WHEN $3 THEN full_next_fetch_at WHEN full_next_fetch_at IS NOT NULL THEN now()+interval '30 minutes' ELSE NULL END,
- full_fetch_error=CASE WHEN $3 THEN full_fetch_error ELSE $2 END
- WHERE id=$1`, id, fetchErr.Error(), canceled)
+		full_next_fetch_at=NULL, full_fetch_error=$2 WHERE id=$1`, id, fetchErr.Error())
 	return err
 }
 
 // ContentStatus is a lightweight view used while an open article awaits automatic extraction.
 type ContentStatus struct {
+	Fetched bool   `json:"fetched"`
 	Pending bool   `json:"pending"`
 	Error   string `json:"error"`
 }
 
 // FullContentStatus reads extraction state without loading the stored article bodies.
 func (s *Store) FullContentStatus(ctx context.Context, id int64) (status ContentStatus, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT full_next_fetch_at IS NOT NULL,full_fetch_error
- FROM articles.entries WHERE id=$1 AND deleted_at IS NULL`, id).Scan(&status.Pending, &status.Error)
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM articles.full_contents f WHERE f.article_id=e.id),
+ COALESCE(full_fetch_until > now(), false), full_fetch_error
+ FROM articles.entries e WHERE id=$1 AND deleted_at IS NULL`, id).Scan(&status.Fetched, &status.Pending, &status.Error)
 	return status, err
 }

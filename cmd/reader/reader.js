@@ -199,7 +199,7 @@
       const request = displayRequest;
       const requestNow = !request.complete;
       const fetched = reader.dataset.contentFetched === "true";
-      if (!requestNow && fetched) return;
+      if (!requestNow && (fetched || reader.dataset.contentError === "true")) return;
       const hadError = reader.dataset.contentError === "true";
       const generation = navigationGeneration;
 
@@ -225,9 +225,9 @@
           }
           const status = await (requestNow ? request.result : readStatus("GET"));
           if (generation !== navigationGeneration || selectedID() !== id) return;
-          if ((!status.pending && !fetched) || Boolean(status.error) !== hadError) {
+          if ((status.fetched && !fetched) || Boolean(status.error) !== hadError) {
             await navigate(location.href, { history: "none", keepReaderScroll: true });
-          } else {
+          } else if (status.pending) {
             scheduleContentCheck();
           }
         } catch {
@@ -238,7 +238,7 @@
       }
 
       if (requestNow) void checkContent();
-      else contentPollTimer = setTimeout(checkContent, hadError ? 30000 : 5000);
+      else contentPollTimer = setTimeout(checkContent, 5000);
     }
 
     return { cancel, reset, scheduleContentCheck };

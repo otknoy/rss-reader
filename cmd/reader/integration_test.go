@@ -497,8 +497,8 @@ func TestPrototypeIntegration(t *testing.T) {
 			!strings.Contains(w.Body.String(), `"pending":false`) {
 			t.Fatalf("undisplayed article was queued: %d %s", w.Code, w.Body.String())
 		}
-		if item, err := as.RecordDisplay(ctx, queuedID, ""); err != nil || !item.FullContentPending {
-			t.Fatalf("display did not schedule extraction: %+v %v", item, err)
+		if err := as.RecordDisplay(ctx, queuedID, ""); err != nil {
+			t.Fatal(err)
 		}
 		if err := owner.QueryRowContext(ctx, `SELECT first_opened_at FROM articles.entries WHERE id=$1`, queuedID).Scan(&openedAt); err != nil ||
 			openedAt == nil {
@@ -508,40 +508,29 @@ func TestPrototypeIntegration(t *testing.T) {
 		if err := as.Save(ctx, queued); err != nil {
 			t.Fatal(err)
 		}
-		if jobs, err := freshStore.PendingFullContent(ctx); err != nil || len(jobs) != 1 {
-			t.Fatalf("duplicate or missing job: %v %v", jobs, err)
+		if url, err := as.ClaimFullContent(ctx, queuedID, false); err != nil || url != queued.URL {
+			t.Fatalf("first claim: %q %v", url, err)
 		}
-		claimed, err := as.ClaimFullContent(ctx, queuedID)
-		if err != nil || !claimed {
-			t.Fatalf("claim: %v %v", claimed, err)
-		}
-		if claimed, err := freshStore.ClaimFullContent(ctx, queuedID); err != nil || claimed {
-			t.Fatalf("another worker overlapped automatic fetch: %v %v", claimed, err)
+		if url, err := freshStore.ClaimFullContent(ctx, queuedID, false); err != nil || url != "" {
+			t.Fatalf("overlapping claim: %q %v", url, err)
 		}
 		if err := as.FailFullContent(ctx, queuedID, errors.New("temporary failure")); err != nil {
 			t.Fatal(err)
 		}
-		if jobs, err := as.PendingFullContent(ctx); err != nil || len(jobs) != 0 {
-			t.Fatalf("failure did not back off: %v %v", jobs, err)
+		if w := request("POST", contentURL, nil); w.Code != http.StatusOK ||
+			!strings.Contains(w.Body.String(), `"pending":false`) ||
+			!strings.Contains(w.Body.String(), "本文の取得に失敗しました") {
+			t.Fatalf("reopening after failure: %d %s", w.Code, w.Body.String())
 		}
-		retained, err := as.Get(ctx, queuedID)
-		if err != nil ||
-			retained.BodyText != queued.BodyText ||
-			!retained.FullContentPending ||
-			retained.FullFetchError == "" {
-			t.Fatalf("failure lost article or retry state: %+v %v", retained, err)
+		if url, err := freshStore.ClaimFullContent(ctx, queuedID, false); err != nil || url != "" {
+			t.Fatalf("failed article automatically reclaimed: %q %v", url, err)
 		}
-		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries SET full_next_fetch_at=now()-interval '1 second',full_fetch_until=now()-interval '1 second' WHERE id=$1`, queuedID); err != nil {
-			t.Fatal(err)
+		if w := request("GET", fmt.Sprintf("/articles/%d", queuedID), nil); w.Code != http.StatusOK ||
+			!strings.Contains(w.Body.String(), "本文を再取得") || !strings.Contains(w.Body.String(), queued.BodyText) {
+			t.Fatalf("missing retry or RSS summary: %d", w.Code)
 		}
-		if claimed, err := freshStore.ClaimFullContent(ctx, queuedID); err != nil || !claimed {
-			t.Fatalf("expired lease not reclaimed: %v %v", claimed, err)
-		}
-		if err := as.FailFullContent(ctx, queuedID, context.Canceled); err != nil {
-			t.Fatal(err)
-		}
-		if jobs, err := freshStore.PendingFullContent(ctx); err != nil || len(jobs) != 1 {
-			t.Fatalf("canceled work was not resumable: %v %v", jobs, err)
+		if url, err := freshStore.ClaimFullContent(ctx, queuedID, true); err != nil || url != queued.URL {
+			t.Fatalf("manual retry claim: %q %v", url, err)
 		}
 		if err := as.SaveFullContent(ctx, queuedID, articles.FullContent{
 			HTML: "<p>取得済み本文</p>",
@@ -570,53 +559,7 @@ func TestPrototypeIntegration(t *testing.T) {
 			!reopenedAt.Equal(*openedAt) {
 			t.Fatalf("reopening changed first display: %v %v", reopenedAt, err)
 		}
-		for i := 0; i < 12; i++ {
-			a := articles.Article{
-				SourceID:   999,
-				ExternalID: fmt.Sprintf("queue-batch-%d", i),
-				URL:        fmt.Sprintf("https://example.com/batch/%d", i),
-				Title:      "batch",
-			}
-			if err := as.Save(ctx, a); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if _, err := owner.ExecContext(ctx, `UPDATE articles.entries SET first_opened_at=now(),full_next_fetch_at=now() WHERE source_id=999 AND title='batch'`); err != nil {
-			t.Fatal(err)
-		}
 
-		jobs, err := as.PendingFullContent(ctx)
-		if err != nil || len(jobs) != 10 {
-			t.Fatalf("unbounded or missing batch: %d %v", len(jobs), err)
-		}
-		for _, job := range jobs {
-			if err := as.Delete(ctx, job.ID); err != nil {
-				t.Fatal(err)
-			}
-		}
-		jobs, err = as.PendingFullContent(ctx)
-		if err != nil || len(jobs) != 2 {
-			t.Fatalf("deleted jobs were processed or remaining jobs lost: %d %v", len(jobs), err)
-		}
-		retryID := jobs[0].ID
-		if claimed, err := as.ClaimFullContent(ctx, retryID); err != nil || !claimed {
-			t.Fatalf("retry fixture claim: %v %v", claimed, err)
-		}
-		if err := as.FailFullContent(ctx, retryID, errors.New("retry later")); err != nil {
-			t.Fatal(err)
-		}
-		var retryBefore, retryAfter time.Time
-		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, retryID).Scan(&retryBefore); err != nil {
-			t.Fatal(err)
-		}
-		if w := request("POST", fmt.Sprintf("/articles/%d/content-status", retryID), nil); w.Code != http.StatusOK ||
-			!strings.Contains(w.Body.String(), `"pending":true`) {
-			t.Fatalf("display during backoff: %d %s", w.Code, w.Body.String())
-		}
-		if err := owner.QueryRowContext(ctx, `SELECT full_next_fetch_at FROM articles.entries WHERE id=$1`, retryID).Scan(&retryAfter); err != nil ||
-			!retryBefore.Equal(retryAfter) {
-			t.Fatalf("reopening changed an existing retry schedule: %v %v", retryAfter, err)
-		}
 	})
 	t.Run("OPML import export and atomic merge", func(t *testing.T) {
 		existingURL := "https://opml.example.org/existing?a=1&b=2"
@@ -880,7 +823,7 @@ func TestPrototypeIntegration(t *testing.T) {
 			strings.Contains(firstBody, ">history-fixture-22</a>") {
 			t.Fatalf("unexpected first history page: status %d", first.Code)
 		}
-		if _, err := as.RecordDisplay(ctx, boundaryID, ""); err != nil {
+		if err := as.RecordDisplay(ctx, boundaryID, ""); err != nil {
 			t.Fatal(err)
 		}
 		second := request("GET", strings.ReplaceAll(next[1], "&amp;", "&"), nil)

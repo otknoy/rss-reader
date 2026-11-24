@@ -33,7 +33,7 @@ flowchart LR
 | --- | --- |
 | [cmd/reader](../cmd/reader) | コマンドの分岐、DB 接続、HTTP ルーティング、画面テンプレート、ブラウザー操作、定期実行を組み立てる |
 | [internal/feeds](../internal/feeds) | 購読・フォルダーの保存、取得予定と結果の管理、OPML の解析・生成 |
-| [internal/articles](../internal/articles) | 記事、既読・お気に入り、削除状態、全文取得待ち、検索 SQL の管理 |
+| [internal/articles](../internal/articles) | 記事、既読・お気に入り、削除状態、全文取得状態、検索 SQL の管理 |
 | [internal/ingestion](../internal/ingestion) | フィードの取得・解析と記事保存の調整、記事ページからの本文抽出 |
 | [internal/search](../internal/search) | 検索の入口。記事ストアの検索を呼び出す |
 | [migrations](../migrations) | テーブル、インデックス、権限、既存データの更新を番号付き SQL で管理 |
@@ -48,7 +48,7 @@ flowchart LR
 | --- | --- |
 | `reader web` | 既定のコマンド。HTTP サーバーを起動し、`AUTO_REFRESH` が有効なら同じプロセスで定期取得を実行する |
 | `reader fetch` | 次回取得時刻にかかわらず、購読中のフィードを一巡する |
-| `reader fetch --due` | 期限を迎えたフィードを一巡し、記事の全文取得待ちも処理する。Web の定期処理と同じ処理を使う |
+| `reader fetch --due` | 期限を迎えたフィードを一巡する。Web の定期処理と同じ処理を使う |
 | `reader migrate` | 管理者用の `DATABASE_URL` で未適用の SQL を順番に実行する |
 | `reader healthcheck` | ローカルの `/healthz` を確認する。ハンドラーは両方のアプリ用 DB 接続を確認する |
 
@@ -85,19 +85,9 @@ OPML は `POST /feeds/import` で受け付け、ファイル全体を検証し�
 
 ### 記事全文の取得と表示
 
-ブラウザーが記事の本文ペインを表示すると、`POST /articles/{id}/content-status` が初回表示日時を記録し、全文が未取得なら取得待ちへ追加して処理を試みます。`GET` は状態を返します。定期処理は実行可能な記事を一度に最大10件選び、1件ずつ処理します。
+ブラウザーが記事の本文ペインを表示すると、`POST /articles/{id}/content-status` が閲覧を記録します。全文が未取得で失敗記録がなければ、記事単位のリースを確保して取得を試みます。`GET` は現在の取得状態を返します。
 
-```mermaid
-flowchart LR
-    display["記事を表示"] -->|全文が未取得| pending["全文取得待ち"]
-    pending -->|定期処理・記事表示| claim["期限を迎えた記事の取得リースを確保"]
-    claim -->|リースを確保できた場合| extract["記事ページを取得し、本文を抽出・保存"]
-    extract -->|成功| complete["取得待ちを解除"]
-    extract -->|失敗| retry["通常は再試行日時とエラーを記録"]
-    retry --> pending
-```
-
-通常の失敗では再試行を30分後に設定します。取得リースは2分で期限切れになり、HTTP 通信中は DB トランザクションを保持しません。取得・抽出した全文はフィード由来の本文と別に保存します。画面は全文を優先し、外部由来の HTML を表示直前に許可リストでサニタイズします。表示中の記事で取得が完了するかエラー状態が変わると、ブラウザーが右ペインを更新します。 [取得待ちの処理](../internal/ingestion/content_queue.go)・[本文抽出](../internal/ingestion/full_article.go)・[HTML の表示処理](../cmd/reader/article_html.go)
+取得に失敗すると、RSS本文や要約とともに失敗を表示します。「本文を再取得」を押すと、表示中の記事の全文を再取得します。定期処理が取得するのはフィードです。全文は別テーブルに保存し、画面では表示直前に許可リストでサニタイズします。[本文取得](../internal/ingestion/content_fetch.go)・[HTMLの表示処理](../cmd/reader/article_html.go)
 
 ## データモデルと権限
 
@@ -106,7 +96,7 @@ flowchart LR
 | `feeds.subscriptions` | 購読 URL、名前、フォルダー、購読状態、HTTP 検証子、次回取得時刻、取得結果 |
 | `feeds.folders` | フォルダー名と表示順 |
 | `feeds.closed_folders` | 閉じているフォルダー |
-| `articles.entries` | 記事本体、公開日時、既読・お気に入り・削除状態、取得済み全文、再試行とリースの情報 |
+| `articles.entries` | 記事本体、公開日時、既読・お気に入り・削除状態、本文取得のエラーとリース |
 | `public.schema_migrations` | 適用済みマイグレーションのファイル名 |
 
 記事の `source_id` は購読 ID に対応する値で、手動登録は `0` です。購読との対応付けはアプリが扱います。`(source_id, external_id)` の一意制約で重複を防ぎ、再取得では既読・お気に入り・取得済み全文を維持します。削除済みのフィード記事は再取得でも削除状態を維持します。

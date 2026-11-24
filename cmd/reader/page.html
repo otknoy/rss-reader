@@ -828,7 +828,18 @@ label {
         <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
       </form>
     </div>
-    {{if not .FullFetchedAt}}<p class="muted" role="status">{{if .FullFetchError}}本文の自動取得に失敗しました。後で再試行します。{{else}}本文は自動取得され次第、ここに表示されます。{{end}}</p>{{end}}
+    {{if not .FullFetchedAt}}
+      {{if .FullFetchError}}
+        <p class="muted" role="status">本文の取得に失敗しました。</p>
+        <form method="post" action="/articles/{{.ID}}/content-status">
+          <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+          <input type="hidden" name="retry" value="true">
+          <button>本文を再取得</button>
+        </form>
+      {{else}}
+        <p class="muted" role="status">本文を取得しています。</p>
+      {{end}}
+    {{end}}
     <p class="muted content-source">{{if .FullFetchedAt}}元ページから取得した本文{{else if .SourceID}}RSSに含まれる本文・要約{{else}}登録した本文・メモ{{end}}</p>
     {{$body := richArticle .}}
     {{if $body}}

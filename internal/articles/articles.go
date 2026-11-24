@@ -16,7 +16,6 @@ type Article struct {
 	IsRead, Favorite                                       bool
 	FullBodyHTML, FullBodyText, FullSourceURL              string
 	FullFetchedAt                                          *time.Time
-	FullContentPending                                     bool
 	FullFetchError                                         string
 }
 
@@ -73,7 +72,7 @@ func (s *Store) Save(ctx context.Context, a Article) error {
 }
 
 const columns = `e.id,e.source_id,e.external_id,e.source_name,e.url,e.title,e.body_text,e.body_html,e.published_at,e.is_read,e.favorite,
- COALESCE(f.body_html,''),COALESCE(f.body_text,''),COALESCE(f.source_url,''),f.fetched_at,(e.full_next_fetch_at IS NOT NULL),e.full_fetch_error`
+ COALESCE(f.body_html,''),COALESCE(f.body_text,''),COALESCE(f.source_url,''),f.fetched_at,e.full_fetch_error`
 const fullContentJoin = ` LEFT JOIN articles.full_contents f ON f.article_id=e.id`
 
 func scan(row interface{ Scan(...any) error }) (Article, error) {
@@ -94,7 +93,6 @@ func scan(row interface{ Scan(...any) error }) (Article, error) {
 		&a.FullBodyText,
 		&a.FullSourceURL,
 		&a.FullFetchedAt,
-		&a.FullContentPending,
 		&a.FullFetchError,
 	)
 	return a, err
