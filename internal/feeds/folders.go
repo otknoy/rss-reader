@@ -37,16 +37,37 @@ func listFolders(ctx context.Context, db queryer) (folders []Folder, err error) 
 	return folders, rows.Err()
 }
 
-// SetFolderOrder saves a sidebar order.
-func (s *Store) SetFolderOrder(ctx context.Context, ids []int64) error {
+// ErrFolderOrderChanged indicates the caller's displayed order is stale.
+var ErrFolderOrderChanged = errors.New("folder order changed")
+
+// SetFolderOrder saves a sidebar order if it still matches the caller's original order.
+func (s *Store) SetFolderOrder(ctx context.Context, previous, ids []int64) (err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollbackErr := tx.Rollback(); !errors.Is(rollbackErr, sql.ErrTxDone) {
+			err = errors.Join(err, rollbackErr)
+		}
+	}()
 	if _, err := tx.ExecContext(ctx, "LOCK TABLE feeds.folders IN SHARE ROW EXCLUSIVE MODE"); err != nil {
 		return err
 	}
+
+	current, err := listFolders(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if len(current) != len(previous) {
+		return ErrFolderOrderChanged
+	}
+	for i, folder := range current {
+		if folder.ID != previous[i] {
+			return ErrFolderOrderChanged
+		}
+	}
+
 	if _, err := tx.ExecContext(ctx, `UPDATE feeds.folders SET sort_position = array_position($1::bigint[], id)`, ids); err != nil {
 		return err
 	}

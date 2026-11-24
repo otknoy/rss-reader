@@ -816,10 +816,20 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal("feed unread count missing from filtered page")
 		}
 		first, second := fmt.Sprint(emptyID), fmt.Sprint(find(after, newURL).FolderID)
+		currentFolders, err := fs.Folders(ctx)
+		if err != nil || len(currentFolders) != 2 {
+			t.Fatalf("load current folder order: %v %v", currentFolders, err)
+		}
+		previous := []string{fmt.Sprint(currentFolders[0].ID), fmt.Sprint(currentFolders[1].ID)}
 		for _, order := range [][]string{{first, second}, {second, first}} {
-			if w := request("POST", "/folders/order", url.Values{"folder": order}); w.Code != http.StatusSeeOther {
+			if w := request("POST", "/folders/order", url.Values{"folder": order, "previous_folder": previous}); w.Code != http.StatusSeeOther {
 				t.Fatalf("save folder order: %d %s", w.Code, w.Body.String())
 			}
+			stale := []string{order[1], order[0]}
+			if w := request("POST", "/folders/order", url.Values{"folder": stale, "previous_folder": stale}); w.Code != http.StatusConflict {
+				t.Fatalf("stale folder order: %d %s", w.Code, w.Body.String())
+			}
+			previous = order
 			page := request("GET", "/", nil).Body.String()
 			firstIndex := strings.Index(page, `data-sidebar-folder="`+order[0]+`"`)
 			secondIndex := strings.Index(page, `data-sidebar-folder="`+order[1]+`"`)

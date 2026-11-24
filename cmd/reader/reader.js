@@ -54,6 +54,12 @@
       });
       if (!response.ok) {
         const message = await response.text();
+        if (response.status === 409 && options.reloadOnConflict && !controller.signal.aborted) {
+          if (await navigate(location.href, { history: "none", refreshList: true, keepReaderScroll: true })) {
+            showError(message.trim());
+          }
+          return;
+        }
         throw new Error(message.length < 300 ? message : "読み込めませんでした。再度お試しください。");
       }
       if (options.openURL) {
@@ -669,10 +675,11 @@
     const pendingFolderStates = new Map();
     let folderOrderPending = false;
 
-    async function saveFolderOrder(ids) {
+    async function saveFolderOrder(previous, ids) {
       folderOrderPending = true;
       try {
         const body = new URLSearchParams({ return_to: location.pathname + location.search });
+        for (const id of previous) body.append("previous_folder", id);
         for (const id of ids) body.append("folder", id);
         return await navigate("/folders/order", {
           method: "POST",
@@ -680,6 +687,7 @@
           history: "replace",
           refreshList: true,
           keepReaderScroll: true,
+          reloadOnConflict: true,
         });
       } finally {
         folderOrderPending = false;
@@ -697,8 +705,9 @@
       const from = folders.indexOf(folder);
       const to = from + Number(orderButton.dataset.folderStep);
       if (!folders[to]) return;
+      const previous = folders.map(item => item.dataset.sortableFolder);
       [folders[from], folders[to]] = [folders[to], folders[from]];
-      const saved = await saveFolderOrder(folders.map(item => item.dataset.sortableFolder));
+      const saved = await saveFolderOrder(previous, folders.map(item => item.dataset.sortableFolder));
       if (saved) {
         const current = document.querySelector(
           `.subscription-manager[open] .folder-board > [data-sortable-folder="${folder.dataset.sortableFolder}"]`,

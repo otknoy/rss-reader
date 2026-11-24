@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"rss-reader/internal/feeds"
+	"slices"
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -75,28 +76,34 @@ func (a *application) setFolderOpen(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *application) setFolderOrder(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "並び順の指定が不正です", http.StatusBadRequest)
-		return
-	}
-	values := r.PostForm["folder"]
+func parseFolderOrder(values []string) ([]int64, bool) {
 	ids := make([]int64, 0, len(values))
 	seen := make(map[int64]bool)
 	for _, value := range values {
 		id, err := strconv.ParseInt(value, 10, 64)
 		if err != nil || id <= 0 || seen[id] {
-			http.Error(w, "並び順の指定が不正です", http.StatusBadRequest)
-			return
+			return nil, false
 		}
 		seen[id] = true
 		ids = append(ids, id)
 	}
-	if len(ids) == 0 {
+	return ids, len(ids) > 0
+}
+
+func (a *application) setFolderOrder(w http.ResponseWriter, r *http.Request) {
+	previous, previousOK := parseFolderOrder(r.PostForm["previous_folder"])
+	ids, idsOK := parseFolderOrder(r.PostForm["folder"])
+	if !previousOK || !idsOK ||
+		!slices.Equal(slices.Sorted(slices.Values(previous)), slices.Sorted(slices.Values(ids))) {
 		http.Error(w, "並び順の指定が不正です", http.StatusBadRequest)
 		return
 	}
-	if err := a.feeds.SetFolderOrder(r.Context(), ids); err != nil {
+	err := a.feeds.SetFolderOrder(r.Context(), previous, ids)
+	if errors.Is(err, feeds.ErrFolderOrderChanged) {
+		http.Error(w, "フォルダーが別の操作で変更されたため、並び順を保存できませんでした。", http.StatusConflict)
+		return
+	}
+	if err != nil {
 		fail(w, err)
 		return
 	}
