@@ -405,6 +405,7 @@ func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 		AnchorID:      pagination.anchorID,
 		BeforeAnchor:  pagination.beforeAnchor,
 		HistoryBefore: pagination.historyBefore,
+		ForwardOnly:   articlePage,
 	})
 	if err != nil {
 		return view{}, err

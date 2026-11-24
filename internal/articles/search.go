@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ type Query struct {
 	AnchorID      int64
 	BeforeAnchor  bool
 	HistoryBefore time.Time
+	ForwardOnly   bool // Omit totals and detect the next page with one extra row.
 }
 
 // Result contains a page of articles and aggregate counts.
@@ -62,6 +64,7 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	args := []any{pattern, q.FeedID, q.View, q.FeedIDs}
 
 	history := q.View == "history"
+	forwardOnly := q.ForwardOnly && !q.BeforeAnchor
 	if history {
 		where += " AND last_opened_at IS NOT NULL"
 		args[2] = ""
@@ -74,31 +77,44 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 	}
 	offset := 0
 	limit := pageSize
-	if history {
+	switch {
+	case history:
 		order = "last_opened_at DESC, id DESC"
-		if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM articles.entries"+where, args...).Scan(&r.Total); err != nil {
-			return r, err
+		if !forwardOnly {
+			if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM articles.entries"+where, args...).Scan(&r.Total); err != nil {
+				return r, err
+			}
 		}
 		if !q.HistoryBefore.IsZero() && q.AnchorID > 0 {
 			where += " AND (last_opened_at,id) < ($5,$6)"
 			args = append(args, q.HistoryBefore, q.AnchorID)
 		}
 		limit++
-	} else if q.AnchorID > 0 {
+	case q.AnchorID > 0:
 		// The boundary row can be read already. Its sort key still anchors the next page.
 		boundary := "(published_at,id) " + compare + " (SELECT published_at,id FROM articles.entries WHERE id=$5)"
 		args = append(args, q.AnchorID)
-		var onRequestedSide, onOtherSide int
-		count := "SELECT count(*), count(*) FILTER (WHERE " + boundary + "), count(*) FILTER (WHERE NOT (" + boundary + "))"
-		if err := s.db.QueryRowContext(ctx, count+" FROM articles.entries"+where, args...).Scan(&r.Total, &onRequestedSide, &onOtherSide); err != nil {
-			return r, err
-		}
-		r.HasPrevious, r.HasNext = onOtherSide > 0, onRequestedSide > pageSize
-		if q.BeforeAnchor {
-			r.HasPrevious, r.HasNext = r.HasNext, r.HasPrevious
+		if forwardOnly {
+			limit++
+		} else {
+			var onRequestedSide, onOtherSide int
+			count := "SELECT count(*), count(*) FILTER (WHERE " + boundary + "), count(*) FILTER (WHERE NOT (" + boundary + "))"
+			if err := s.db.QueryRowContext(ctx, count+" FROM articles.entries"+where, args...).Scan(&r.Total, &onRequestedSide, &onOtherSide); err != nil {
+				return r, err
+			}
+			r.HasPrevious, r.HasNext = onOtherSide > 0, onRequestedSide > pageSize
+			if q.BeforeAnchor {
+				r.HasPrevious, r.HasNext = r.HasNext, r.HasPrevious
+			}
 		}
 		where += " AND " + boundary
-	} else {
+	case forwardOnly:
+		if r.Page-1 > math.MaxInt/pageSize {
+			return r, nil
+		}
+		offset = (r.Page - 1) * pageSize
+		limit++
+	default:
 		if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM articles.entries`+where, args...).Scan(&r.Total); err != nil {
 			return r, err
 		}
@@ -141,7 +157,7 @@ func (s *Store) Search(ctx context.Context, q Query) (r Result, err error) {
 		r.Items = append(r.Items, a)
 	}
 
-	if history && len(r.Items) > pageSize {
+	if limit > pageSize && len(r.Items) > pageSize {
 		r.HasNext = true
 		r.Items = r.Items[:pageSize]
 	}

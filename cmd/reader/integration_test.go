@@ -927,6 +927,26 @@ func TestPrototypeIntegration(t *testing.T) {
 			}
 		}
 
+		for _, q := range []articles.Query{
+			{Text: "sort-fixture", ForwardOnly: true},
+			{Text: "sort-fixture", View: "unread", ForwardOnly: true},
+		} {
+			first, err := as.Search(ctx, q)
+			if err != nil || first.Total != 0 || len(first.Items) != 20 || !first.HasNext {
+				t.Fatalf("unexpected forward page: %+v, %v", first, err)
+			}
+			if q.View == "unread" {
+				q.AnchorID = first.Items[19].ID
+			} else {
+				q.Page = 2
+			}
+			last, err := as.Search(ctx, q)
+			if err != nil || last.Total != 0 || len(last.Items) != 1 || last.HasNext ||
+				last.Items[0].Title != "sort-fixture-21" {
+				t.Fatalf("unexpected last forward page: %+v, %v", last, err)
+			}
+		}
+
 		const unread = "/?q=sort-fixture&view=unread"
 		fixture, err := as.Search(ctx, articles.Query{Text: "sort-fixture"})
 		if err != nil || len(fixture.Items) != 20 {
