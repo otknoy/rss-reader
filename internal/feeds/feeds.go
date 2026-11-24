@@ -77,16 +77,20 @@ func (s *Store) Remove(ctx context.Context, id int64) error {
 
 // List returns active subscriptions.
 func (s *Store) List(ctx context.Context) ([]Feed, error) {
-	return s.list(ctx, false)
+	return list(ctx, s.db, false)
 }
 
 // ListDue returns active subscriptions whose next fetch is due.
 func (s *Store) ListDue(ctx context.Context) ([]Feed, error) {
-	return s.list(ctx, true)
+	return list(ctx, s.db, true)
 }
 
-func (s *Store) list(ctx context.Context, dueOnly bool) (out []Feed, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, url, title, checked_at, last_error,
+type queryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func list(ctx context.Context, db queryer, dueOnly bool) (out []Feed, err error) {
+	rows, err := db.QueryContext(ctx, `SELECT id, url, title, checked_at, last_error,
 		ttl_minutes, next_fetch_at, last_success_at, etag, last_modified, COALESCE(folder_id, 0)
 	FROM feeds.subscriptions
 	WHERE active AND (NOT $1 OR next_fetch_at IS NULL OR next_fetch_at <= now())

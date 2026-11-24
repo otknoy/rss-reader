@@ -229,7 +229,7 @@ type opmlDocument struct {
 
 // ExportOPML writes active subscriptions in a stable, portable OPML 2.0 document.
 func (s *Store) ExportOPML(ctx context.Context, output io.Writer) error {
-	list, err := s.List(ctx)
+	list, folders, err := s.exportSnapshot(ctx)
 	if err != nil {
 		return err
 	}
@@ -242,10 +242,6 @@ func (s *Store) ExportOPML(ctx context.Context, output io.Writer) error {
 	})
 	doc := opmlDocument{Version: "2.0"}
 	doc.Head.Title = "RSS Reader subscriptions"
-	folders, err := s.Folders(ctx)
-	if err != nil {
-		return err
-	}
 	grouped := make(map[int64][]opmlOutline)
 	for _, feed := range list {
 		grouped[feed.FolderID] = append(grouped[feed.FolderID], opmlOutline{
@@ -269,4 +265,31 @@ func (s *Store) ExportOPML(ctx context.Context, output io.Writer) error {
 	encoder := xml.NewEncoder(output)
 	encoder.Indent("", "  ")
 	return encoder.Encode(doc)
+}
+
+// exportSnapshot reads folder membership and folder names from the same database snapshot.
+func (s *Store) exportSnapshot(ctx context.Context) (subscriptions []Feed, folders []Folder, err error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() {
+		rollbackErr := tx.Rollback()
+		if !errors.Is(rollbackErr, sql.ErrTxDone) {
+			err = errors.Join(err, rollbackErr)
+		}
+	}()
+
+	subscriptions, err = list(ctx, tx, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	folders, err = listFolders(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+	return subscriptions, folders, nil
 }

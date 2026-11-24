@@ -17,8 +17,12 @@ type Folder struct {
 var ErrFolderName = errors.New("フォルダー名を入力してください")
 
 // Folders lists folders in display order, followed by unpositioned folders by name.
-func (s *Store) Folders(ctx context.Context) (folders []Folder, err error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,name FROM feeds.folders ORDER BY sort_position NULLS LAST,name,id")
+func (s *Store) Folders(ctx context.Context) ([]Folder, error) {
+	return listFolders(ctx, s.db)
+}
+
+func listFolders(ctx context.Context, db queryer) (folders []Folder, err error) {
+	rows, err := db.QueryContext(ctx, "SELECT id,name FROM feeds.folders ORDER BY sort_position NULLS LAST,name,id")
 	if err != nil {
 		return nil, err
 	}
