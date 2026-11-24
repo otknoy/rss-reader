@@ -52,6 +52,7 @@ type application struct {
 	fetcher  *ingestion.Service
 }
 type view struct {
+	FeedsByFolder                                             map[int64][]feeds.Feed
 	ClosedFolders                                             map[int64]bool
 	FolderUnread, FeedUnread                                  map[int64]int
 	Folders                                                   []feeds.Folder
@@ -340,6 +341,14 @@ func (a *application) loadSidebar(ctx context.Context, folder string) (sidebar, 
 	}, nil
 }
 
+func groupFeedsByFolder(list []feeds.Feed) map[int64][]feeds.Feed {
+	grouped := make(map[int64][]feeds.Feed)
+	for _, feed := range list {
+		grouped[feed.FolderID] = append(grouped[feed.FolderID], feed)
+	}
+	return grouped
+}
+
 func (a *application) sidebarUnread(ctx context.Context, list []feeds.Feed) (map[int64]int, map[int64]int, error) {
 	unreadByFeed, err := a.articles.UnreadByFeed(ctx)
 	if err != nil {
@@ -468,6 +477,7 @@ func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 		OldestURL:     oldestURL,
 		NewestURL:     newestURL,
 		Feeds:         sidebar.feeds,
+		FeedsByFolder: groupFeedsByFolder(sidebar.feeds),
 		Result:        result,
 		Query:         r.URL.Query().Get("q"),
 		Filter:        filter,
