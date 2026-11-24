@@ -64,10 +64,11 @@
 
       const html = await response.text();
       if (controller.signal.aborted) return;
-      const nextContext = contextKey(response.url);
+      const responseURL = new URL(response.url);
+      const nextContext = contextKey(responseURL);
       const sameContext = nextContext === currentContext;
       const change = options.stateChange;
-      if (sameContext && change?.kind === "favorite" && !isFavoritesView(new URL(response.url).searchParams)) {
+      if (sameContext && change?.kind === "favorite" && !isFavoritesView(responseURL.searchParams)) {
         // The result set is unchanged. Keep the rows, keyboard cursor and scroll in place.
         for (const article of document.querySelectorAll("[data-article-id], .reader[data-reading-id]")) {
           if ((article.dataset.articleId || article.dataset.readingId) === change.id) {
@@ -92,7 +93,7 @@
       const cursorIndex = articleRows().findIndex(row => row.dataset.articleId === keyboardCursorID);
       if (!oldID && nextID) mobileListScroll = window.scrollY;
 
-      const filter = new URL(response.url).searchParams.get("view");
+      const filter = responseURL.searchParams.get("view");
       const keepArticleList = sameContext && filter !== "read" &&
         (change?.kind === "read" || change?.kind === "favorite");
       const refreshWorkspace = !sameContext || options.refreshList;
@@ -133,7 +134,9 @@
       oldReader.replaceWith(nextReader);
       if (options.keepReaderScroll && oldID === nextID) nextReader.scrollTop = readerScroll;
       document.querySelector(".shell").classList.toggle("has-detail", Boolean(nextID));
-      updateSelectedRows(nextID, nextList.querySelector('input[name="return_to"]')?.value || response.url);
+      const returnTo = nextList.querySelector('input[name="return_to"]')?.value ||
+        responseURL.pathname + responseURL.search;
+      updateSelectedRows(nextID, returnTo);
       if (sameContext && (!options.refreshList || keepArticleList)) {
         document.querySelector("#list-pane .notice")?.remove();
         oldList.scrollTop = listScroll;
