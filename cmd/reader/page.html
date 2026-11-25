@@ -57,12 +57,87 @@ summary { cursor: pointer; }
   height: 100dvh;
   overflow: hidden;
 }
+.sidebar-toggle { display: none; }
+.sidebar-scrim, .sidebar-drawer-brand { display: none; }
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 14px;
+}
+.sidebar .brand {
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.sidebar-toggle:not([hidden]) {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.sidebar-toggle:hover, .sidebar-toggle[aria-expanded="true"] { color: var(--accent); }
+.sidebar-toggle:focus-visible { outline-offset: 0; }
+.sidebar-icon {
+  position: relative;
+  width: 22px;
+  height: 17px;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+}
+.sidebar-icon::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 7px;
+  border-right: 1px solid currentColor;
+  border-radius: 2px 0 0 2px;
+  content: "";
+}
+.sidebar-icon::after {
+  position: absolute;
+  top: 4px;
+  left: 2px;
+  width: 3px;
+  height: 1px;
+  background: currentColor;
+  box-shadow: 0 3px currentColor, 0 6px currentColor;
+  content: "";
+}
+.sidebar-toggle[aria-expanded="true"] .sidebar-icon::before {
+  background: color-mix(in srgb, currentColor 24%, transparent);
+}
+.sidebar:has(.sidebar-toggle:not([hidden])[aria-expanded="false"]) .sidebar-header { margin-bottom: 0; }
+.sidebar-toggle[data-hide-brand] + .brand { display: none; }
+@media (width > 600px) {
+  .shell { transition: grid-template-columns 180ms ease; }
+  .shell:has(.sidebar-toggle:not([hidden])[aria-expanded="false"]) {
+    grid-template-columns: 77px minmax(0, 1fr);
+  }
+  .sidebar:has(.sidebar-toggle:not([hidden])[aria-expanded="false"]) {
+    overflow: hidden;
+  }
+  .sidebar-controls { transition: transform 180ms ease, visibility 180ms; }
+  .sidebar:has(.sidebar-toggle:not([hidden])[aria-expanded="false"]) .sidebar-controls {
+    visibility: hidden;
+    transform: translateX(-100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell, .sidebar-controls { transition: none; }
+}
 .sidebar {
   position: sticky;
   top: 0;
   height: 100dvh;
   overflow-y: auto;
-  padding: 28px 20px;
+  padding: 16px;
   background: #181b1d;
   border-right: 1px solid var(--line);
 }
@@ -170,7 +245,6 @@ summary { cursor: pointer; }
   gap: 8px;
 }
 .list-pane .article h2 { font-size: 14px; }
-.sidebar .brand { display: inline-block; margin-bottom: 12px; }
 .sidebar .feeds { margin: 0; }
 .sidebar .feeds h2 {
   margin: 0 0 8px;
@@ -185,7 +259,6 @@ header {
   gap: 16px;
   margin-bottom: 24px;
 }
-.brand { font-size: 18px; font-weight: 650; }
 .actions {
   display: flex;
   align-items: center;
@@ -541,6 +614,40 @@ header.list-header {
     overflow: visible;
   }
   .workspace { height: auto; }
+  .sidebar-header:has(.sidebar-toggle:not([hidden])) {
+    margin-bottom: 0;
+  }
+  .sidebar:has(.sidebar-toggle:not([hidden])) .sidebar-drawer-brand {
+    display: inline-block;
+    margin-bottom: 14px;
+  }
+  .sidebar:has(.sidebar-toggle:not([hidden])) .sidebar-controls {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 5;
+    width: min(320px, 85vw);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 16px;
+    background: #181b1d;
+    border-right: 1px solid var(--line);
+    visibility: hidden;
+    transform: translateX(-100%);
+  }
+  .sidebar:has(.sidebar-toggle[aria-expanded="true"]) .sidebar-controls {
+    visibility: visible;
+    transform: translateX(0);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sidebar-controls { transition: transform 180ms ease, visibility 180ms; }
+  }
+  .sidebar:has(.sidebar-toggle[aria-expanded="true"]) .sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    background: rgb(0 0 0 / 55%);
+  }
   .list-pane {
     height: auto;
     min-height: 60dvh;
@@ -554,11 +661,10 @@ header.list-header {
   .sidebar {
     position: static;
     height: auto;
-    padding: 18px 16px;
+    padding: 8px 16px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
-  .sidebar .feed-list { max-height: 180px; overflow-y: auto; }
 
   header { margin-bottom: 18px; }
 
@@ -576,139 +682,149 @@ header.list-header {
 <body>
 <div class="shell {{if .Detail}}has-detail{{end}}">
 <aside class="sidebar">
-  <a href="/{{if .NewestFirst}}?sort=newest{{end}}" class="brand">RSS Reader</a>
-  <form class="search" data-workspace-search method="get" action="/" role="search">
-    {{if .Filter}}<input type="hidden" name="view" value="{{.Filter}}">{{end}}
-    {{if .Folder}}<input type="hidden" name="folder" value="{{.Folder}}">{{end}}
-    {{if .FeedID}}<input type="hidden" name="feed" value="{{.FeedID}}">{{end}}
-    {{if .NewestFirst}}<input type="hidden" name="sort" value="newest">{{end}}
-    <input name="q" type="search" value="{{.Query}}" aria-label="タイトル・本文を検索" placeholder="記事を検索">
-    <button>検索</button>
-  </form>
-  <nav class="sort-options result-filters" aria-label="記事の絞り込み">
-    <a class="button" href="{{.UnreadURL}}" data-workspace-link data-unread-filter {{if .UnreadOnly}}aria-current="true"{{end}}>未読</a>
-    <a class="button" href="{{.FavoritesURL}}" data-workspace-link {{if .FavoritesOnly}}aria-current="true"{{end}}>お気に入り</a>
-    <a class="button" href="/?view=history" data-workspace-link data-history-link {{if eq .Filter "history"}}aria-current="true"{{end}}>閲覧履歴</a>
-  </nav>
-  <section class="feeds" aria-label="購読フィード">
-    <h2>購読フィード <span class="count">{{len .Feeds}}</span></h2>
-    <div class="feed-list">
-      <a class="all-folders"
-         href="/?{{if .Filter}}view={{.Filter}}{{end}}{{if .NewestFirst}}{{if .Filter}}&amp;{{end}}sort=newest{{end}}"
-         data-workspace-link data-sidebar-scope
-         {{if and (eq .FeedID 0) (not .Folder)}}aria-current="page"{{end}}>すべて</a>
-      <div data-folder-order-list>
-        {{range .Folders}}
-          <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}">
-            <summary data-folder-drop="{{.ID}}">
-              <a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}"
-                 data-workspace-link data-sidebar-scope {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}><span>{{.Name}}</span>{{template "unread-badge" index $.FolderUnread .ID}}</a>
-            </summary>
-            {{range index $.FeedsByFolder .ID}}
-              <div class="feed">
-                <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}"
-                   href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
-              </div>
-            {{end}}
-          </details>
-        {{end}}
-      </div>
-      <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0">
-        <summary data-folder-drop="0">
-          <a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}{{if .NewestFirst}}&amp;sort=newest{{end}}"
-             data-workspace-link data-sidebar-scope {{if eq .Folder "0"}}aria-current="page"{{end}}><span>未分類</span>{{template "unread-badge" index .FolderUnread 0}}</a>
-        </summary>
-        {{range index .FeedsByFolder 0}}
-          <div class="feed">
-            <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}"
-               href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
-          </div>
-        {{end}}
-      </details>
-      <button type="button" class="manage-feeds-button" data-manage-feeds>購読を管理</button>
-      <a class="button manage-feeds-button" href="/admin/database">DB管理</a>
-      <dialog class="subscription-manager" aria-labelledby="manage-feeds-title">
-        <header>
-          <h2 id="manage-feeds-title">購読を管理</h2>
-          <button type="button" data-close-manager>閉じる</button>
-        </header>
-        {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
-        <p class="hint">フィードを移動先のフォルダーにドラッグしてください。</p>
-        <form class="folder-create" method="post" action="/feeds">
-          <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-          <label>フィードURL<input type="url" name="url" required placeholder="https://example.com/feed.xml" maxlength="4096"></label>
-          <label>フォルダー<select name="folder"><option value="0">未分類</option>{{range .Folders}}<option value="{{.ID}}" {{if eq $.Folder (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
-          <button>購読する</button>
-        </form>
-        <form class="folder-create" method="post" action="/folders/create">
-          <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-          <label>新規フォルダー<input name="name" required></label>
-          <button>作成</button>
-        </form>
-        <div class="folder-panes">
-          <section class="folder-pane" aria-labelledby="unfiled-heading">
-            <h3 id="unfiled-heading">未分類</h3>
-            <div class="folder-pane-scroll folder-card" data-manager-pane="unfiled" data-folder-drop="0" tabindex="0" aria-labelledby="unfiled-heading">
-              <ul>{{range index .FeedsByFolder 0}}{{template "managed-feed" .}}{{end}}</ul>
-            </div>
-          </section>
-          <section class="folder-pane" aria-labelledby="folders-heading">
-            <h3 id="folders-heading">フォルダー</h3>
-            <div class="folder-pane-scroll" data-manager-pane="folders" tabindex="0" aria-labelledby="folders-heading">
-              <div class="folder-board" data-folder-order-list>
-                {{range .Folders}}
-                <section class="folder-card" data-folder-drop="{{.ID}}" data-sortable-folder="{{.ID}}">
-                  <div class="folder-card-header">
-                    <h3>{{.Name}}</h3>
-                    <div class="folder-order-buttons">
-                      <button type="button" data-folder-step="-1" aria-label="「{{.Name}}」を前に移動">←</button>
-                      <button type="button" data-folder-step="1" aria-label="「{{.Name}}」を後ろに移動">→</button>
-                    </div>
-                  </div>
-                  <ul>{{range index $.FeedsByFolder .ID}}{{template "managed-feed" .}}{{end}}</ul>
-                  <details class="folder-edit">
-                    <summary>フォルダー設定</summary>
-                    <form method="post" action="/folders/rename/{{.ID}}">
-                      <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
-                      <label>フォルダー名<input name="name" value="{{.Name}}" required></label>
-                      <button>改名</button>
-                    </form>
-                    <form method="post" action="/folders/delete/{{.ID}}"><button>削除してフィードを未分類へ戻す</button></form>
-                  </details>
-                </section>
-                {{else}}
-                  <p class="hint">フォルダーを作成すると、ここに表示されます。</p>
-                {{end}}
-              </div>
-            </div>
-          </section>
+  <div class="sidebar-header">
+    <button type="button" class="sidebar-toggle" aria-label="購読サイドバー" aria-expanded="false"
+            aria-controls="sidebar-controls" hidden>
+      <span class="sidebar-icon" aria-hidden="true"></span>
+    </button>
+    <a href="/{{if .NewestFirst}}?sort=newest{{end}}" class="brand">RSS Reader</a>
+  </div>
+  <div class="sidebar-scrim" aria-hidden="true" data-close-sidebar></div>
+  <div id="sidebar-controls" class="sidebar-controls" tabindex="-1" role="region" aria-label="購読先・検索">
+    <a href="/{{if .NewestFirst}}?sort=newest{{end}}" class="brand sidebar-drawer-brand">RSS Reader</a>
+    <form class="search" data-workspace-search method="get" action="/" role="search">
+      {{if .Filter}}<input type="hidden" name="view" value="{{.Filter}}">{{end}}
+      {{if .Folder}}<input type="hidden" name="folder" value="{{.Folder}}">{{end}}
+      {{if .FeedID}}<input type="hidden" name="feed" value="{{.FeedID}}">{{end}}
+      {{if .NewestFirst}}<input type="hidden" name="sort" value="newest">{{end}}
+      <input name="q" type="search" value="{{.Query}}" aria-label="タイトル・本文を検索" placeholder="記事を検索">
+      <button>検索</button>
+    </form>
+    <nav class="sort-options result-filters" aria-label="記事の絞り込み">
+      <a class="button" href="{{.UnreadURL}}" data-workspace-link data-unread-filter {{if .UnreadOnly}}aria-current="true"{{end}}>未読</a>
+      <a class="button" href="{{.FavoritesURL}}" data-workspace-link {{if .FavoritesOnly}}aria-current="true"{{end}}>お気に入り</a>
+      <a class="button" href="/?view=history" data-workspace-link data-history-link {{if eq .Filter "history"}}aria-current="true"{{end}}>閲覧履歴</a>
+    </nav>
+    <section class="feeds" aria-label="購読フィード">
+      <h2>購読フィード <span class="count">{{len .Feeds}}</span></h2>
+      <div class="feed-list">
+        <a class="all-folders"
+           href="/?{{if .Filter}}view={{.Filter}}{{end}}{{if .NewestFirst}}{{if .Filter}}&amp;{{end}}sort=newest{{end}}"
+           data-workspace-link data-sidebar-scope
+           {{if and (eq .FeedID 0) (not .Folder)}}aria-current="page"{{end}}>すべて</a>
+        <div data-folder-order-list>
+          {{range .Folders}}
+            <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}">
+              <summary data-folder-drop="{{.ID}}">
+                <a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}"
+                   data-workspace-link data-sidebar-scope {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}><span>{{.Name}}</span>{{template "unread-badge" index $.FolderUnread .ID}}</a>
+              </summary>
+              {{range index $.FeedsByFolder .ID}}
+                <div class="feed">
+                  <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}"
+                     href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
+                </div>
+              {{end}}
+            </details>
+          {{end}}
         </div>
-        <details class="manager-tools">
-          <summary>OPML</summary>
-          <section aria-label="OPMLの読み込みと書き出し">
-            <form method="post" action="/feeds/import" enctype="multipart/form-data">
-              <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-              <label>OPMLファイル<input type="file" name="opml" accept=".opml,.xml,text/xml,application/xml,text/x-opml" required></label>
-              <button>インポート</button>
-              <p class="hint">既存の購読に追加します。2MB・1000フィードまで。</p>
-            </form>
-            <p><a class="button" href="/feeds/export.opml" download>OPMLをエクスポート</a></p>
-          </section>
+        <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0">
+          <summary data-folder-drop="0">
+            <a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}{{if .NewestFirst}}&amp;sort=newest{{end}}"
+               data-workspace-link data-sidebar-scope {{if eq .Folder "0"}}aria-current="page"{{end}}><span>未分類</span>{{template "unread-badge" index .FolderUnread 0}}</a>
+          </summary>
+          {{range index .FeedsByFolder 0}}
+            <div class="feed">
+              <a data-workspace-link draggable="true" data-feed-drag="{{.ID}}"
+                 href="/?feed={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}" {{if eq $.FeedID .ID}}aria-current="page"{{end}}><span>{{.Title}}</span>{{template "unread-badge" (index $.FeedUnread .ID)}}</a>
+            </div>
+          {{end}}
         </details>
-        <details class="manager-tools">
-          <summary>記事URLを登録</summary>
-          <form method="post" action="/articles">
+        <button type="button" class="manage-feeds-button" data-manage-feeds>購読を管理</button>
+        <a class="button manage-feeds-button" href="/admin/database">DB管理</a>
+        <dialog class="subscription-manager" aria-labelledby="manage-feeds-title">
+          <header>
+            <h2 id="manage-feeds-title">購読を管理</h2>
+            <button type="button" data-close-manager>閉じる</button>
+          </header>
+          {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
+          <p class="hint">フィードを移動先のフォルダーにドラッグしてください。</p>
+          <form class="folder-create" method="post" action="/feeds">
             <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-            <label>URL<input type="url" name="url" required placeholder="https://example.com/article" maxlength="4096"></label>
-            <label>タイトル（任意）<input name="title" maxlength="1000"></label>
-            <label>本文・メモ（任意）<textarea name="body" rows="3"></textarea></label>
-            <button>保存する</button>
+            <label>フィードURL<input type="url" name="url" required placeholder="https://example.com/feed.xml" maxlength="4096"></label>
+            <label>フォルダー<select name="folder"><option value="0">未分類</option>{{range .Folders}}<option value="{{.ID}}" {{if eq $.Folder (printf "%d" .ID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+            <button>購読する</button>
           </form>
-        </details>
-      </dialog>
-    </div>
-  </section>
-  <button type="button" class="shortcuts-hint" data-show-shortcuts aria-haspopup="dialog" aria-controls="shortcuts-dialog" aria-keyshortcuts="?"><kbd>?</kbd> ショートカット一覧</button>
+          <form class="folder-create" method="post" action="/folders/create">
+            <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+            <label>新規フォルダー<input name="name" required></label>
+            <button>作成</button>
+          </form>
+          <div class="folder-panes">
+            <section class="folder-pane" aria-labelledby="unfiled-heading">
+              <h3 id="unfiled-heading">未分類</h3>
+              <div class="folder-pane-scroll folder-card" data-manager-pane="unfiled" data-folder-drop="0" tabindex="0" aria-labelledby="unfiled-heading">
+                <ul>{{range index .FeedsByFolder 0}}{{template "managed-feed" .}}{{end}}</ul>
+              </div>
+            </section>
+            <section class="folder-pane" aria-labelledby="folders-heading">
+              <h3 id="folders-heading">フォルダー</h3>
+              <div class="folder-pane-scroll" data-manager-pane="folders" tabindex="0" aria-labelledby="folders-heading">
+                <div class="folder-board" data-folder-order-list>
+                  {{range .Folders}}
+                  <section class="folder-card" data-folder-drop="{{.ID}}" data-sortable-folder="{{.ID}}">
+                    <div class="folder-card-header">
+                      <h3>{{.Name}}</h3>
+                      <div class="folder-order-buttons">
+                        <button type="button" data-folder-step="-1" aria-label="「{{.Name}}」を前に移動">←</button>
+                        <button type="button" data-folder-step="1" aria-label="「{{.Name}}」を後ろに移動">→</button>
+                      </div>
+                    </div>
+                    <ul>{{range index $.FeedsByFolder .ID}}{{template "managed-feed" .}}{{end}}</ul>
+                    <details class="folder-edit">
+                      <summary>フォルダー設定</summary>
+                      <form method="post" action="/folders/rename/{{.ID}}">
+                        <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
+                        <label>フォルダー名<input name="name" value="{{.Name}}" required></label>
+                        <button>改名</button>
+                      </form>
+                      <form method="post" action="/folders/delete/{{.ID}}"><button>削除してフィードを未分類へ戻す</button></form>
+                    </details>
+                  </section>
+                  {{else}}
+                    <p class="hint">フォルダーを作成すると、ここに表示されます。</p>
+                  {{end}}
+                </div>
+              </div>
+            </section>
+          </div>
+          <details class="manager-tools">
+            <summary>OPML</summary>
+            <section aria-label="OPMLの読み込みと書き出し">
+              <form method="post" action="/feeds/import" enctype="multipart/form-data">
+                <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+                <label>OPMLファイル<input type="file" name="opml" accept=".opml,.xml,text/xml,application/xml,text/x-opml" required></label>
+                <button>インポート</button>
+                <p class="hint">既存の購読に追加します。2MB・1000フィードまで。</p>
+              </form>
+              <p><a class="button" href="/feeds/export.opml" download>OPMLをエクスポート</a></p>
+            </section>
+          </details>
+          <details class="manager-tools">
+            <summary>記事URLを登録</summary>
+            <form method="post" action="/articles">
+              <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+              <label>URL<input type="url" name="url" required placeholder="https://example.com/article" maxlength="4096"></label>
+              <label>タイトル（任意）<input name="title" maxlength="1000"></label>
+              <label>本文・メモ（任意）<textarea name="body" rows="3"></textarea></label>
+              <button>保存する</button>
+            </form>
+          </details>
+        </dialog>
+      </div>
+    </section>
+    <button type="button" class="shortcuts-hint" data-show-shortcuts aria-haspopup="dialog" aria-controls="shortcuts-dialog" aria-keyshortcuts="?"><kbd>?</kbd> ショートカット一覧</button>
+  </div>
 </aside>
 <main id="workspace" class="workspace" aria-keyshortcuts="j k i f Space Shift+Space">
 <section id="list-pane" data-page="{{.Result.Page}}" class="list-pane" aria-label="記事一覧" tabindex="-1">

@@ -5,6 +5,33 @@
   let navigationGeneration = 0;
   let currentContext = contextKey(location.href);
   let mobileListScroll = 0;
+  const mobileLayout = matchMedia("(max-width: 600px)");
+  const sidebarToggle = document.querySelector(".sidebar-toggle");
+  let desktopSidebarExpanded = true;
+  let mobileSidebarExpanded = null;
+
+  function updateSidebarToggle() {
+    const expanded = mobileLayout.matches ? mobileSidebarExpanded : desktopSidebarExpanded;
+    sidebarToggle.setAttribute("aria-expanded", String(expanded === true));
+    sidebarToggle.toggleAttribute("data-hide-brand", expanded === false);
+  }
+
+  function setSidebarExpanded(expanded) {
+    if (mobileLayout.matches) mobileSidebarExpanded = expanded;
+    else desktopSidebarExpanded = expanded;
+    updateSidebarToggle();
+  }
+
+  sidebarToggle.addEventListener("click", () => {
+    const expanded = sidebarToggle.getAttribute("aria-expanded") !== "true";
+    setSidebarExpanded(expanded);
+    if (expanded && mobileLayout.matches) {
+      document.getElementById("sidebar-controls").focus({ preventScroll: true });
+    }
+  });
+  mobileLayout.addEventListener("change", updateSidebarToggle);
+  updateSidebarToggle();
+  sidebarToggle.hidden = false;
 
   const bulkReadCursor = Symbol("bulkRead");
   let keyboardCursorID = selectedID();
@@ -125,6 +152,7 @@
         const paneScroll = new Map(Array.from(manager?.querySelectorAll("[data-manager-pane]") || [],
           pane => [pane.dataset.managerPane, pane.scrollTop]));
         manager?.close();
+        nextSidebar.querySelector(".sidebar-toggle").replaceWith(sidebarToggle);
         sidebar.replaceWith(nextSidebar);
         if (manager) {
           const nextManager = nextSidebar.querySelector(".subscription-manager");
@@ -164,8 +192,13 @@
       if (options.history === "replace") history.replaceState({}, "", response.url);
       else if (options.history !== "none") history.pushState({}, "", response.url);
       if (!options.keepReaderScroll && !document.querySelector("dialog[open]")) {
+        if (mobileLayout.matches && mobileSidebarExpanded && (!sameContext || options.closeMobileNavigation)) {
+          setSidebarExpanded(false);
+        }
         (nextID ? nextReader : document.querySelector("#list-pane")).focus({ preventScroll: true });
-        if (matchMedia("(max-width: 600px)").matches) window.scrollTo(0, nextID ? 0 : mobileListScroll);
+        if (mobileLayout.matches) {
+          window.scrollTo(0, !nextID && sameContext && !options.closeMobileNavigation ? mobileListScroll : 0);
+        }
       }
       return true;
     } catch (error) {
@@ -621,17 +654,25 @@
 
   async function focusSearch() {
     const selector = '[data-workspace-search] input[type="search"]';
-    const search = document.querySelector(selector);
-    if (!search.getClientRects().length) {
+    if (mobileLayout.matches && selectedID()) {
       const close = document.querySelector(".reader-toolbar [data-workspace-link]");
-      if (close) await navigate(close.href);
+      if (close && !await navigate(close.href)) return;
     }
+    setSidebarExpanded(true);
     document.querySelector(selector).focus();
   }
 
   document.addEventListener("keydown", event => {
     const target = event.target instanceof Element ? event.target : document.activeElement;
     if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === "Escape" && mobileLayout.matches &&
+        sidebarToggle.getAttribute("aria-expanded") === "true" &&
+        target?.closest(".sidebar") && !document.querySelector("dialog[open]")) {
+      event.preventDefault();
+      setSidebarExpanded(false);
+      sidebarToggle.focus({ preventScroll: true });
+      return;
+    }
     if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || document.querySelector("dialog[open]")) return;
     if (!event.shiftKey && event.key === "Enter" && keyboardCursorID === bulkReadCursor) {
       const button = document.querySelector("#list-pane [data-mark-loaded-read]");
@@ -829,6 +870,11 @@
   }, true);
 
   document.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-close-sidebar]")) {
+      setSidebarExpanded(false);
+      sidebarToggle.focus({ preventScroll: true });
+      return;
+    }
     const markRead = event.target.closest("[data-mark-loaded-read]");
     if (markRead) {
       await markLoadedRead(markRead);
@@ -869,7 +915,10 @@
     if (new URL(link.href).origin !== location.origin) return;
     event.preventDefault();
     if (!row) {
-      await navigate(link.href, { refreshList: link.hasAttribute("data-history-link") });
+      await navigate(link.href, {
+        refreshList: link.hasAttribute("data-history-link"),
+        closeMobileNavigation: Boolean(link.closest(".sidebar")),
+      });
       return;
     }
     if (pageMovePending || favoritePending) return;
@@ -888,7 +937,7 @@
       event.preventDefault();
       const url = new URL(form.action);
       url.search = new URLSearchParams(new FormData(form)).toString();
-      void navigate(url);
+      void navigate(url, { closeMobileNavigation: true });
     } else if (form.method.toLowerCase() === "post") {
       event.preventDefault();
       const data = new FormData(form);
