@@ -8,12 +8,11 @@
   const mobileLayout = matchMedia("(max-width: 600px)");
   const sidebarToggle = document.querySelector(".sidebar-toggle");
   let desktopSidebarExpanded = true;
-  let mobileSidebarExpanded = null;
+  let mobileSidebarExpanded = false;
 
   function updateSidebarToggle() {
     const expanded = mobileLayout.matches ? mobileSidebarExpanded : desktopSidebarExpanded;
-    sidebarToggle.setAttribute("aria-expanded", String(expanded === true));
-    sidebarToggle.toggleAttribute("data-hide-brand", expanded === false);
+    sidebarToggle.setAttribute("aria-expanded", String(expanded));
   }
 
   function setSidebarExpanded(expanded) {
@@ -25,8 +24,9 @@
   sidebarToggle.addEventListener("click", () => {
     const expanded = sidebarToggle.getAttribute("aria-expanded") !== "true";
     setSidebarExpanded(expanded);
-    if (expanded && mobileLayout.matches) {
-      document.getElementById("sidebar-controls").focus({ preventScroll: true });
+    if (mobileLayout.matches) {
+      const focusTarget = expanded ? document.getElementById("sidebar-controls") : sidebarToggle;
+      focusTarget.focus({ preventScroll: true });
     }
   });
   mobileLayout.addEventListener("change", updateSidebarToggle);
@@ -376,15 +376,28 @@
     setTimeout(() => { toast.textContent = ""; }, 5000);
   }
 
+  function revealListItem(item) {
+    item.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const pane = item.closest("#list-pane");
+    const headerBottom = pane.querySelector(".list-header").getBoundingClientRect().bottom;
+    const overlap = headerBottom - item.getBoundingClientRect().top;
+    if (overlap <= 0) return;
+    const scroller = mobileLayout.matches ? window : pane;
+    scroller.scrollBy(0, -Math.ceil(overlap));
+  }
+
   function scrollToCursor(rows, index) {
     const row = rows[index];
     const pane = row.closest("#list-pane");
     if (pane.clientHeight === 0) return;
-    if (getComputedStyle(pane).overflowY === "visible") {
-      row.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (mobileLayout.matches) {
+      revealListItem(row);
       return;
     }
 
+    const paneTop = pane.getBoundingClientRect().top + pane.clientTop;
+    const top = pane.querySelector(".list-header").getBoundingClientRect().bottom;
+    const bottom = paneTop + pane.clientHeight;
     // Keep five titles on either side when the list pane has enough room.
     const start = Math.max(0, index - 5);
     const titles = rows.slice(start, index + 6).map(item => item.querySelector("h2").getBoundingClientRect());
@@ -392,13 +405,11 @@
 
     let first = 0;
     let last = titles.length - 1;
-    while (titles[last].bottom - titles[first].top > pane.clientHeight && first < last) {
+    while (titles[last].bottom - titles[first].top > bottom - top && first < last) {
       if (current - first > last - current) first++;
       else last--;
     }
 
-    const top = pane.getBoundingClientRect().top + pane.clientTop;
-    const bottom = top + pane.clientHeight;
     if (titles[first].top < top) pane.scrollTop += Math.floor(titles[first].top - top);
     else if (titles[last].bottom > bottom) pane.scrollTop += Math.ceil(titles[last].bottom - bottom);
   }
@@ -416,7 +427,7 @@
 
     if (scroll && onBulkRead) {
       bulkRead.focus({ preventScroll: true });
-      bulkRead.scrollIntoView({ block: "nearest" });
+      revealListItem(bulkRead);
     } else if (scroll && item) scrollToCursor(rows, rows.indexOf(item));
 
     const status = document.querySelector("#keyboard-status");

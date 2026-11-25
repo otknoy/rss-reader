@@ -58,7 +58,7 @@ summary { cursor: pointer; }
   overflow: hidden;
 }
 .sidebar-toggle { display: none; }
-.sidebar-scrim, .sidebar-drawer-brand { display: none; }
+.sidebar-scrim { display: none; }
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -114,8 +114,8 @@ summary { cursor: pointer; }
   background: color-mix(in srgb, currentColor 24%, transparent);
 }
 .sidebar:has(.sidebar-toggle:not([hidden])[aria-expanded="false"]) .sidebar-header { margin-bottom: 0; }
-.sidebar-toggle[data-hide-brand] + .brand { display: none; }
 @media (width > 600px) {
+  .sidebar-toggle:not([hidden])[aria-expanded="false"] + .brand { display: none; }
   .shell { transition: grid-template-columns 180ms ease; }
   .shell:has(.sidebar-toggle:not([hidden])[aria-expanded="false"]) {
     grid-template-columns: 77px minmax(0, 1fr);
@@ -148,11 +148,12 @@ summary { cursor: pointer; }
   height: 100dvh;
 }
 .list-pane {
+  --list-padding-inline: 20px;
   position: relative;
   min-width: 0;
   height: 100dvh;
   overflow-y: auto;
-  padding: 24px 20px 48px;
+  padding: 0 var(--list-padding-inline) 48px;
   border-right: 1px solid var(--line);
 }
 .reader-pane {
@@ -484,9 +485,21 @@ label {
   color: var(--accent);
 }
 header.list-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: block;
-  margin-bottom: 12px;
+  margin: 0 calc(-1 * var(--list-padding-inline)) 4px;
+  padding: 16px var(--list-padding-inline) 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
+}
+.list-header h1, .list-header-query {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .list-header h1 {
   margin: 0 0 6px;
@@ -623,6 +636,7 @@ header.list-header {
 }
 @media (max-width: 600px) {
   .shell {
+    --mobile-header-height: 61px;
     grid-template-columns: 1fr;
     height: auto;
     overflow: visible;
@@ -631,13 +645,19 @@ header.list-header {
   .sidebar-header:has(.sidebar-toggle:not([hidden])) {
     margin-bottom: 0;
   }
-  .sidebar:has(.sidebar-toggle:not([hidden])) .sidebar-drawer-brand {
-    display: inline-block;
-    margin-bottom: 14px;
+  .sidebar:has(.sidebar-toggle:not([hidden])) {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    height: var(--mobile-header-height);
+    overflow: visible;
+  }
+  .shell:has(.sidebar-toggle:not([hidden])) .list-header {
+    top: var(--mobile-header-height);
   }
   .sidebar:has(.sidebar-toggle:not([hidden])) .sidebar-controls {
     position: fixed;
-    inset: 0 auto 0 0;
+    inset: var(--mobile-header-height) auto 0 0;
     z-index: 5;
     width: min(320px, 85vw);
     overflow-y: auto;
@@ -658,15 +678,16 @@ header.list-header {
   .sidebar:has(.sidebar-toggle[aria-expanded="true"]) .sidebar-scrim {
     display: block;
     position: fixed;
-    inset: 0;
+    inset: var(--mobile-header-height) 0 0;
     z-index: 4;
     background: rgb(0 0 0 / 55%);
   }
   .list-pane {
+    --list-padding-inline: 16px;
     height: auto;
     min-height: 60dvh;
     overflow: visible;
-    padding: 20px 16px 32px;
+    padding-bottom: 32px;
   }
   .reader-pane { padding: 20px 16px 32px; }
   .has-detail .sidebar { display: none; }
@@ -705,7 +726,6 @@ header.list-header {
   </div>
   <div class="sidebar-scrim" aria-hidden="true" data-close-sidebar></div>
   <div id="sidebar-controls" class="sidebar-controls" tabindex="-1" role="region" aria-label="購読先・検索">
-    <a href="/{{if .NewestFirst}}?sort=newest{{end}}" class="brand sidebar-drawer-brand">RSS Reader</a>
     <form class="search" data-workspace-search method="get" action="/" role="search">
       {{if .Filter}}<input type="hidden" name="view" value="{{.Filter}}">{{end}}
       {{if .Folder}}<input type="hidden" name="folder" value="{{.Folder}}">{{end}}
@@ -856,7 +876,7 @@ header.list-header {
         すべての記事
       {{- end -}}
     </h1>
-    {{if .Query}}<div>「{{.Query}}」の検索結果</div>{{end}}
+    {{if .Query}}<div class="list-header-query">「{{.Query}}」の検索結果</div>{{end}}
     <div class="list-header-controls">
       <div class="muted">
         {{- if eq .Filter "unread" -}}未読 ·
