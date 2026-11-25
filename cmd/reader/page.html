@@ -404,22 +404,30 @@ label {
 [data-sidebar-folder] { margin-bottom: 6px; }
 [data-sidebar-folder] > summary {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
   border-radius: 6px;
   background: var(--surface);
 }
 [data-sidebar-folder] > summary::-webkit-details-marker { display: none; }
-[data-sidebar-folder] > summary::before {
+.folder-disclosure {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  color: var(--muted);
+}
+@media (hover: hover) {
+  .folder-disclosure:hover { color: var(--text); }
+}
+.folder-disclosure::before {
   content: "";
-  justify-self: center;
-  width: 6px;
-  height: 6px;
-  border: solid var(--muted);
+  width: 8px;
+  height: 8px;
+  border: solid currentColor;
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(-45deg);
 }
-[data-sidebar-folder][open] > summary::before { transform: translateY(-2px) rotate(45deg); }
+[data-sidebar-folder][open] > summary > .folder-disclosure::before { transform: translateY(-2px) rotate(45deg); }
 [data-sidebar-folder] > summary > a, .feed-list .feed > a {
   display: flex;
   align-items: baseline;
@@ -431,6 +439,7 @@ label {
   overflow-wrap: anywhere;
 }
 [data-sidebar-folder] > summary > a {
+  align-items: center;
   padding-inline-start: 0;
   color: var(--text);
   font-size: 15px;
@@ -443,6 +452,11 @@ label {
 }
 .feed-list .feed > a { color: var(--muted); font-size: 14px; }
 .feed-list a:hover { color: var(--text); background: #272d29; }
+@media (hover: hover) {
+  .feed-list summary:hover { background: #272d29; }
+}
+.feed-list summary:has(> a[aria-current="page"]) { background: #272d29; }
+.feed-list summary:has(> a[aria-current="page"]) > .folder-disclosure { color: var(--accent); }
 .feed-list a[aria-current="page"] { color: var(--accent); background: #272d29; }
 .unread-badge {
   flex: none;
@@ -716,6 +730,7 @@ header.list-header {
           {{range .Folders}}
             <details {{if not (index $.ClosedFolders .ID)}}open{{end}} data-sidebar-folder="{{.ID}}" data-sortable-folder="{{.ID}}">
               <summary data-folder-drop="{{.ID}}">
+                <span class="folder-disclosure" aria-hidden="true"></span>
                 <a href="/?folder={{.ID}}{{if $.Filter}}&amp;view={{$.Filter}}{{end}}{{if $.NewestFirst}}&amp;sort=newest{{end}}"
                    data-workspace-link data-sidebar-scope {{if eq $.Folder (printf "%d" .ID)}}aria-current="page"{{end}}><span>{{.Name}}</span>{{template "unread-badge" index $.FolderUnread .ID}}</a>
               </summary>
@@ -730,6 +745,7 @@ header.list-header {
         </div>
         <details {{if not (index .ClosedFolders 0)}}open{{end}} data-sidebar-folder="0">
           <summary data-folder-drop="0">
+            <span class="folder-disclosure" aria-hidden="true"></span>
             <a href="/?folder=0{{if .Filter}}&amp;view={{.Filter}}{{end}}{{if .NewestFirst}}&amp;sort=newest{{end}}"
                data-workspace-link data-sidebar-scope {{if eq .Folder "0"}}aria-current="page"{{end}}><span>未分類</span>{{template "unread-badge" index .FolderUnread 0}}</a>
           </summary>
