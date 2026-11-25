@@ -98,7 +98,6 @@ summary { cursor: pointer; }
   height: 100%;
   color: var(--muted);
 }
-.list-pane header { position: relative; }
 
 .article.selected {
   background: #222b26;
@@ -171,11 +170,6 @@ summary { cursor: pointer; }
   gap: 8px;
 }
 .list-pane .article h2 { font-size: 14px; }
-.heading {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 500;
-}
 .sidebar .brand { display: inline-block; margin-bottom: 12px; }
 .sidebar .feeds { margin: 0; }
 .sidebar .feeds h2 {
@@ -402,13 +396,24 @@ label {
   border-radius: 5px;
   color: var(--accent);
 }
-.results {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 6px;
+header.list-header {
+  display: block;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
 }
+.list-header h1 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.list-header-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.list-header .sort-options { flex-wrap: wrap; margin-bottom: 0; }
 .sort-options {
   display: flex;
   gap: 6px;
@@ -419,12 +424,6 @@ label {
 .result-filters { flex-direction: column; margin-bottom: 18px; }
 .sort-options a { padding: 2px 8px; }
 .sort-options a[aria-current] { background: var(--surface); border-color: var(--accent); }
-.results h1 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
 .article { padding: 16px 0; border-bottom: 1px solid var(--line); }
 .article h2 {
   margin: 0 0 5px;
@@ -713,25 +712,10 @@ label {
 </aside>
 <main id="workspace" class="workspace" aria-keyshortcuts="j k i f Space Shift+Space">
 <section id="list-pane" data-page="{{.Result.Page}}" class="list-pane" aria-label="記事一覧" tabindex="-1">
-<header>
-  <p class="heading">{{if eq .Filter "unread"}}未読{{else if eq .Filter "history"}}閲覧履歴{{else if eq .Filter "read"}}既読{{else if eq .Filter "favorites"}}お気に入り{{else}}記事一覧{{end}}</p>
-</header>
-{{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
-
-  <div class="results">
+  <header class="list-header">
     <h1>
-      {{- if .Query -}}
-        「{{.Query}}」の検索結果
-      {{- else if .FolderName -}}
+      {{- if .FolderName -}}
         {{.FolderName}}
-      {{- else if eq .Filter "unread" -}}
-        未読
-      {{- else if eq .Filter "history" -}}
-        閲覧履歴
-      {{- else if eq .Filter "read" -}}
-        既読
-      {{- else if eq .Filter "favorites" -}}
-        お気に入り
       {{- else if ne .FeedID 0 -}}
         {{- range .Feeds -}}
           {{- if eq $.FeedID .ID -}}{{.Title}}{{- end -}}
@@ -740,14 +724,26 @@ label {
         すべての記事
       {{- end -}}
     </h1>
-    <span class="muted">{{.Result.Total}}件</span>
-  </div>
-  {{if ne .Filter "history"}}
-  <nav class="sort-options" aria-label="記事の並び順">
-    <a class="button" href="{{.OldestURL}}" data-workspace-link {{if not .NewestFirst}}aria-current="true"{{end}}>古い順</a>
-    <a class="button" href="{{.NewestURL}}" data-workspace-link {{if .NewestFirst}}aria-current="true"{{end}}>新しい順</a>
-  </nav>
-  {{end}}
+    {{if .Query}}<div>「{{.Query}}」の検索結果</div>{{end}}
+    <div class="list-header-controls">
+      <div class="muted">
+        {{- if eq .Filter "unread" -}}未読 ·
+        {{- else if eq .Filter "history" -}}閲覧履歴 ·
+        {{- else if eq .Filter "read" -}}既読 ·
+        {{- else if eq .Filter "favorites" -}}お気に入り ·
+        {{- else if eq .Filter "unread-favorites" -}}未読のお気に入り ·
+        {{- end }}
+        <span data-result-count>{{.Result.Total}}件</span>
+      </div>
+      {{if ne .Filter "history"}}
+        <nav class="sort-options" aria-label="記事の並び順">
+          <a class="button" href="{{.OldestURL}}" data-workspace-link {{if not .NewestFirst}}aria-current="true"{{end}}>古い順</a>
+          <a class="button" href="{{.NewestURL}}" data-workspace-link {{if .NewestFirst}}aria-current="true"{{end}}>新しい順</a>
+        </nav>
+      {{end}}
+    </div>
+  </header>
+  {{if .Message}}<div class="notice" role="status">{{.Message}}</div>{{end}}
   {{template "article-page" .}}
   {{if and .Result.Items (ne .Filter "read")}}
   <div class="bulk-read">

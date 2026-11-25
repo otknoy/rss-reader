@@ -110,7 +110,7 @@
           if (change.value === "true") updateFavoriteButton(row, true);
           else row.remove();
         }
-        oldList.querySelector(".results .muted").textContent = nextList.querySelector(".results .muted").textContent;
+        oldList.querySelector("[data-result-count]").textContent = nextList.querySelector("[data-result-count]").textContent;
       } else if (refreshWorkspace) {
         oldList.replaceWith(nextList);
         pagination.observeNextPage();
@@ -427,7 +427,7 @@
       decrementUnreadBadge(feed);
       decrementUnreadBadge(feed?.closest("[data-sidebar-folder]")?.querySelector("summary > a"));
       if (document.querySelector('[data-unread-filter][aria-current="true"]')) {
-        const count = document.querySelector("#list-pane .results .muted");
+        const count = document.querySelector("#list-pane [data-result-count]");
         count.textContent = Math.max(0, parseInt(count.textContent, 10) - 1) + "件";
       }
     }
