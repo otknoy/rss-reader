@@ -353,7 +353,23 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err := as.SaveFullContent(ctx, articleID, full); err != nil {
 		t.Fatal(err)
 	}
-	// RSS refresh must not erase an explicitly fetched full article.
+	// This feed has no publication time. Re-saving it should keep the same row version.
+	var before, afterSave string
+	const rowVersionQuery = `SELECT ctid::text FROM articles.entries WHERE id=$1`
+	if err := owner.QueryRowContext(ctx, rowVersionQuery, articleID).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if err := as.Save(ctx, article); err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.QueryRowContext(ctx, rowVersionQuery, articleID).Scan(&afterSave); err != nil {
+		t.Fatal(err)
+	}
+	if before != afterSave {
+		t.Fatalf("unchanged article was rewritten: %s -> %s", before, afterSave)
+	}
+
+	article.BodyText += " 訂正"
 	if err := as.Save(ctx, article); err != nil {
 		t.Fatal(err)
 	}
@@ -524,6 +540,15 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("manual article missing: %+v %v", manual, err)
 		}
 		manualItem := manual.Items[0]
+		if err := as.Delete(ctx, manualItem.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := as.Save(ctx, articles.Article{URL: manualItem.URL, Title: manualItem.Title, BodyText: "保存した本文"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := as.Get(ctx, manualItem.ID); err != nil {
+			t.Fatalf("re-registering an unchanged manual article should restore it: %v", err)
+		}
 		if status, err := as.FullContentStatus(ctx, manualItem.ID); err != nil || status.Pending {
 			t.Fatalf("manual registration unexpectedly queued: %+v %v", status, err)
 		}

@@ -57,7 +57,11 @@ func (s *Store) Save(ctx context.Context, a Article) error {
 			body_text = EXCLUDED.body_text,
 			body_html = EXCLUDED.body_html,
 			published_at = CASE WHEN $9 THEN EXCLUDED.published_at ELSE entries.published_at END,
-			deleted_at = CASE WHEN EXCLUDED.source_id = 0 THEN NULL ELSE entries.deleted_at END`,
+			deleted_at = CASE WHEN EXCLUDED.source_id = 0 THEN NULL ELSE entries.deleted_at END
+		WHERE (entries.source_name, entries.url, entries.title, entries.body_text, entries.body_html)
+			IS DISTINCT FROM (EXCLUDED.source_name, EXCLUDED.url, EXCLUDED.title, EXCLUDED.body_text, EXCLUDED.body_html)
+			OR ($9 AND entries.published_at IS DISTINCT FROM EXCLUDED.published_at)
+			OR (EXCLUDED.source_id = 0 AND entries.deleted_at IS NOT NULL)`,
 		a.SourceID,
 		a.ExternalID,
 		a.SourceName,
