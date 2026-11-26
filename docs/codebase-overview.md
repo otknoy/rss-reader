@@ -46,15 +46,15 @@ flowchart LR
 
 | コマンド | 動作 |
 | --- | --- |
-| `reader web` | 既定のコマンド。HTTP サーバーを起動し、`AUTO_REFRESH` が有効なら同じプロセスで定期取得を実行する |
+| `reader web` | 既定のコマンド。HTTP サーバーを起動する |
 | `reader fetch` | 次回取得時刻にかかわらず、購読中のフィードを一巡する |
-| `reader fetch --due` | 期限を迎えたフィードを一巡する。Web の定期処理と同じ処理を使う |
+| `reader fetch --due` | 期限を迎えたフィードを一巡する。Kubernetes では CronJob が呼び出す |
 | `reader migrate` | 管理者用の `DATABASE_URL` で未適用の SQL を順番に実行する |
 | `reader healthcheck` | ローカルの `/healthz` を確認する。ハンドラーは両方のアプリ用 DB 接続を確認する |
 
 Web と取得コマンドは、購読ストアに `FEEDS_DATABASE_URL`、記事ストアに `ARTICLES_DATABASE_URL` を使います。設定例は [.env.example](../.env.example) を参照してください。
 
-Web の定期処理が有効な場合、起動直後に期限を確認し、各処理の終了から1分後に次の確認を行います。各フィードの次回取得時刻は、基本間隔の `FETCH_INTERVAL`（既定30分）とフィードの TTL の長い方を使って決めます。 [定期実行](../cmd/reader/polling.go)・[取得結果の記録](../internal/feeds/feeds.go)
+Kubernetes の CronJob は1分ごとに取得期限を確認します。各フィードの次回取得時刻は、基本間隔の `FETCH_INTERVAL`（既定30分）とフィードの TTL の長い方を使って決めます。 [定期実行](../k8s/reader/fetch.yaml)・[取得結果の記録](../internal/feeds/feeds.go)
 
 ## 主な処理の流れ
 

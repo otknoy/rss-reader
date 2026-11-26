@@ -14,6 +14,8 @@ docker compose up --build -d
 
 Composeの初期設定ではローカルからアクセスできます。アプリ内の認証は未実装です。
 
+ローカルで期限を迎えたフィードを取得するには `docker compose exec web /app/reader fetch --due` を実行します。KubernetesではCronJobが定期実行します。
+
 ## 開発
 
 [開発・検証手順](AGENTS.md) · [設計方針](docs/architecture.md) · [コーディング規約](docs/coding-style.md)

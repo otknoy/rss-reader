@@ -1,8 +1,8 @@
 # 設計方針
 
 Go + HTMLテンプレート + PostgreSQL（部分更新が必要になったらHTMX）のモジュラーモノリスとする。
-Webと自動RSS取得を同じプロセス・Podで実行する。定期実行と1回分の取得処理は分ける。
-将来のCronJobでは同じイメージの`reader fetch --due`を呼び出す。
+定期取得のスケジュールと1回分の取得処理を分ける。KubernetesではCronJobがWebと同じイメージの`reader fetch --due`を1分ごとに呼び出す。
+デプロイ時はWebとCronJobのイメージタグを揃える。CronJobへの初回切り替えでは、定期ループを削除した新しいイメージを発行し、Webのロールアウト完了後にCronJobを適用する。
 
 ## 境界のルール
 
@@ -41,7 +41,7 @@ DB権限はComposeの統合テストで、他モジュールのテーブルへ�
 
 ## 自動取得
 
-- `ingestion.RefreshDue`が1回分の処理を担当し、Web内のループと`fetch --due`が共用する。
+- `ingestion.RefreshDue`が1回分の処理を担当し、`fetch --due`から呼び出す。
 - `feeds`がttl、HTTP検証子、最終成功日時、次回取得時刻を所有する。
 - 自動取得は期限が来たフィードだけを処理する。待機時間は通常の間隔とttlの長い方。
 - 手動取得は期限を待たないが、同じDBロックで自動取得との重複を防ぐ。
