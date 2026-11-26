@@ -18,6 +18,7 @@ Go + HTMLテンプレート + PostgreSQL（部分更新が必要になったらH
 | articles/postgres | 記事・検索・閲覧記録・本文取得リースのSQL | articles |
 | config | コマンドごとの環境変数の読み込みと検証 | ingestion |
 | ingestion | RSS取得と登録の調整 | feeds、articles |
+| ingestion/httpfetch | 外部HTTP通信、RSS・Atomと記事本文の解析 | feeds、articles、ingestion |
 | reading | 既読操作・閲覧記録・記事本文取得の調整 | articles |
 | search | 検索・将来の検索索引 | articles |
 | workspace | 記事一覧と購読サイドバーの表示データの組み立て | feeds、articles |
@@ -55,7 +56,7 @@ DB権限はComposeの統合テストで、他モジュールのテーブルへ�
 
 ## 記事の表示・全文取得
 
-- `ingestion.FetchArticle`が既存の公開ネットワーク用HTTPクライアントでHTMLを取得・抽出する。
+- `ingestion/httpfetch` が公開ネットワーク用HTTPクライアントでHTMLを取得・抽出する。
 - `articles`が抽出本文・検索用テキスト・最終URL・取得日時を `articles.full_contents` に保存する。RSS本文と本文取得状態は `articles.entries` に保持し、全文保存と取得リースの解除を同時に確定する。
 - HTMLをテンプレートで表示する直前に許可リスト方式でサニタイズする。配信元のCSSやスクリプトは実行しない。
 - 画像はブラウザーが配信元から直接読み込む。画像保存・プロキシ・ブラウザーによるJavaScript実行は行わない。

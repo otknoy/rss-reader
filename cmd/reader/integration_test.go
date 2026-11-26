@@ -18,6 +18,7 @@ import (
 	"rss-reader/internal/feeds"
 	feedpostgres "rss-reader/internal/feeds/postgres"
 	"rss-reader/internal/ingestion"
+	"rss-reader/internal/ingestion/httpfetch"
 	"rss-reader/migrations"
 	"strings"
 	"testing"
@@ -399,7 +400,8 @@ func TestPrototypeIntegration(t *testing.T) {
 	if err != nil || r.Total != 0 {
 		t.Fatalf("unexpected match: %+v %v", r, err)
 	}
-	app := newApplication(fs, as, ingestion.New(fs, as, ingestion.DefaultInterval))
+	client := httpfetch.New()
+	app := newApplication(fs, as, ingestion.New(fs, as, client, ingestion.DefaultInterval), client)
 	request := func(method, path string, form url.Values) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, path, strings.NewReader(form.Encode()))
