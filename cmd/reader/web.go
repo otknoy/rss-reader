@@ -15,6 +15,7 @@ import (
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
+	"rss-reader/internal/reading"
 	"rss-reader/internal/workspace"
 	"strconv"
 	"strings"
@@ -49,6 +50,7 @@ type application struct {
 	feeds     *feeds.Store
 	articles  *articles.Store
 	workspace *workspace.Service
+	reading   *reading.Service
 	fetcher   *ingestion.Service
 }
 type view struct {
@@ -560,7 +562,7 @@ func (a *application) openArticle(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	item, changed, err := a.articles.Open(r.Context(), n)
+	item, changed, err := a.reading.Open(r.Context(), n)
 	if err != nil {
 		fail(w, err)
 		return
@@ -657,32 +659,27 @@ func (a *application) contentStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodPost {
-		retry := r.PostForm.Get("retry") == "true"
-		if !retry {
-			viewID := r.Header.Get("X-Article-View-ID")
-			if viewID != "" {
-				var uuid pgtype.UUID
-				if err := uuid.Scan(viewID); err != nil {
-					http.Error(w, "閲覧IDの指定が不正です", http.StatusBadRequest)
-					return
-				}
-				viewID = uuid.String()
-			}
-			if err := a.articles.RecordDisplay(r.Context(), n, viewID); err != nil {
-				fail(w, err)
+		if r.PostForm.Get("retry") == "true" {
+			a.reading.RetryContent(r.Context(), n)
+			redirect(w, r, "")
+			return
+		}
+		viewID := r.Header.Get("X-Article-View-ID")
+		if viewID != "" {
+			var uuid pgtype.UUID
+			if err := uuid.Scan(viewID); err != nil {
+				http.Error(w, "閲覧IDの指定が不正です", http.StatusBadRequest)
 				return
 			}
+			viewID = uuid.String()
 		}
-		if err := a.fetcher.FetchContent(r.Context(), a.articles, n, retry); err != nil {
-			log.Printf("fetch opened article %d: %v", n, err)
-		}
-		if retry {
-			redirect(w, r, "")
+		if err := a.reading.Display(r.Context(), n, viewID); err != nil {
+			fail(w, err)
 			return
 		}
 	}
 
-	status, err := a.articles.FullContentStatus(r.Context(), n)
+	status, err := a.reading.ContentStatus(r.Context(), n)
 	if err != nil {
 		fail(w, err)
 		return

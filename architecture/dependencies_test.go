@@ -13,6 +13,7 @@ var allowed = map[string]map[string]bool{
 	"articles":  {},
 	"config":    {"ingestion": true},
 	"ingestion": {"feeds": true, "articles": true},
+	"reading":   {"articles": true},
 	"search":    {"articles": true},
 	"workspace": {"feeds": true, "articles": true},
 }
