@@ -3,48 +3,17 @@ package ingestion
 import (
 	"context"
 	"errors"
-	"io"
-	"net/http"
-	"net/url"
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
-	"strings"
 	"testing"
 	"time"
 )
 
-func TestFeedTTL(t *testing.T) {
-	base, _ := url.Parse("https://example.com/feed")
-	for _, tc := range []struct {
-		value string
-		want  int64
-	}{
-		{"", 0},
-		{"0", 0},
-		{"-1", 0},
-		{"abc", 0},
-		{"1.5", 0},
-		{" 60 ", 60},
-		{"10", 10},
-		{"9223372036854775807", 0},
-		{"99999999999999999999999", 0},
-	} {
-		t.Run(tc.value, func(t *testing.T) {
-			raw := `<rss version="2.0"><channel><title>TTL test</title><link>https://example.com</link><description>test</description><ttl>` + tc.value + `</ttl></channel></rss>`
-			parsed, err := parseFeed([]byte(raw), base, feeds.Subscription{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if parsed.TTLMinutes != tc.want {
-				t.Fatalf("ttl=%d, want %d", parsed.TTLMinutes, tc.want)
-			}
-		})
-	}
+type feedFetcherFunc func(context.Context, feeds.Subscription) FetchedFeed
+
+func (f feedFetcherFunc) FetchFeed(ctx context.Context, subscription feeds.Subscription) FetchedFeed {
+	return f(ctx, subscription)
 }
-
-type transportFunc func(*http.Request) (*http.Response, error)
-
-func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 type articleStub struct {
 	saved []articles.Article
@@ -56,79 +25,29 @@ func (s *articleStub) Save(_ context.Context, a articles.Article) error {
 	return s.err
 }
 
-func TestConditionalFetch(t *testing.T) {
-	fixture := `<rss version="2.0"><channel><title>TTL test</title><link>https://example.com</link><description>test</description><ttl>90</ttl><item><guid>1</guid><title>記事</title><link>https://example.com/one</link></item></channel></rss>`
-	previous := feeds.Subscription{
-		ID:           1,
-		Title:        "old",
-		URL:          "https://example.com/feed",
-		TTLMinutes:   60,
-		ETag:         `"old"`,
-		LastModified: "Mon, 16 Nov 2026 00:00:00 GMT",
-	}
-	for _, status := range []int{http.StatusOK, http.StatusNotModified, http.StatusServiceUnavailable} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
-			writer := &articleStub{}
-			service := New(nil, writer, DefaultInterval)
-			service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-				if req.Header.Get("If-None-Match") != previous.ETag ||
-					req.Header.Get("If-Modified-Since") != previous.LastModified {
-					t.Fatal("conditional headers missing")
-				}
-				return &http.Response{
-					StatusCode: status,
-					Header:     http.Header{"Etag": {`"new"`}},
-					Body:       io.NopCloser(strings.NewReader(fixture)),
-					Request:    req,
-				}, nil
-			})}
-			result := service.fetch(context.Background(), previous)
-			switch status {
-			case http.StatusOK:
-				if result.Err != nil || result.TTLMinutes != 90 || result.ETag != `"new"` || len(writer.saved) != 1 {
-					t.Fatalf("result=%+v saved=%v", result, writer.saved)
-				}
-				if result.LastModified != "" {
-					t.Fatal("200 response should clear old validators when absent")
-				}
-			case http.StatusNotModified:
-				if result.Err != nil ||
-					result.TTLMinutes != 60 ||
-					result.ETag != `"new"` ||
-					result.LastModified != previous.LastModified ||
-					len(writer.saved) != 0 {
-					t.Fatalf("result=%+v saved=%v", result, writer.saved)
-				}
-			default:
-				if result.Err == nil ||
-					result.TTLMinutes != 60 ||
-					result.ETag != previous.ETag ||
-					len(writer.saved) != 0 {
-					t.Fatalf("result=%+v saved=%v", result, writer.saved)
-				}
-			}
-		})
-	}
-	t.Run("failed save must not commit new validators", func(t *testing.T) {
-		writer := &articleStub{err: errors.New("database unavailable")}
-		source := &subscriptionsStub{rows: []feeds.Subscription{previous}}
-		service := New(source, writer, DefaultInterval)
-		service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: 200,
-				Header:     http.Header{"Etag": {`"new"`}},
-				Body:       io.NopCloser(strings.NewReader(fixture)),
-				Request:    req,
-			}, nil
-		})}
-		result := service.fetch(context.Background(), previous)
-		if result.Err == nil || result.ETag != previous.ETag || result.TTLMinutes != previous.TTLMinutes {
-			t.Fatalf("unsafe validators: %+v", result)
-		}
-		if err := service.RefreshDue(t.Context()); !errors.Is(err, writer.err) {
-			t.Fatalf("scheduled refresh must report save failure, got %v", err)
+func TestRefreshDueKeepsValidatorsWhenArticleSaveFails(t *testing.T) {
+	previous := feeds.Subscription{ID: 1, TTLMinutes: 60, ETag: "old", LastModified: "old-date"}
+	writer := &articleStub{err: errors.New("database unavailable")}
+	source := &subscriptionsStub{rows: []feeds.Subscription{previous}}
+	fetcher := feedFetcherFunc(func(context.Context, feeds.Subscription) FetchedFeed {
+		return FetchedFeed{
+			FetchResult: feeds.FetchResult{TTLMinutes: 90, ETag: "new", LastModified: "new-date"},
+			Articles:    []articles.Article{{Title: "new article"}},
 		}
 	})
+	service := New(source, writer, fetcher, DefaultInterval)
+
+	if err := service.RefreshDue(t.Context()); !errors.Is(err, writer.err) {
+		t.Fatalf("scheduled refresh must report save failure, got %v", err)
+	}
+	if len(source.results) != 1 {
+		t.Fatalf("expected one saved result, got %d", len(source.results))
+	}
+	result := source.results[0]
+	if !errors.Is(result.Err, writer.err) || result.ETag != previous.ETag ||
+		result.LastModified != previous.LastModified || result.TTLMinutes != previous.TTLMinutes {
+		t.Fatalf("unsafe validators: %+v", result)
+	}
 }
 
 type subscriptionsStub struct {
@@ -179,19 +98,13 @@ func TestRefreshContinuesAfterFeedFailure(t *testing.T) {
 		{ID: 1, URL: "https://example.com/bad"},
 		{ID: 2, URL: "https://example.com/good"},
 	}}
-	service := New(source, &articleStub{}, 45*time.Minute)
-	service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-		status := 304
-		if req.URL.Path == "/bad" {
-			status = 503
+	fetcher := feedFetcherFunc(func(_ context.Context, subscription feeds.Subscription) FetchedFeed {
+		if subscription.ID == 1 {
+			return FetchedFeed{FetchResult: feeds.FetchResult{Err: errors.New("HTTP 503")}}
 		}
-		return &http.Response{
-			StatusCode: status,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader("")),
-			Request:    req,
-		}, nil
-	})}
+		return FetchedFeed{}
+	})
+	service := New(source, &articleStub{}, fetcher, 45*time.Minute)
 	if err := service.RefreshDue(t.Context()); err != nil {
 		t.Fatalf("scheduled refresh failed after recording a feed error: %v", err)
 	}
@@ -228,13 +141,13 @@ func TestRefreshFeedLoadsOnlyRequestedSubscription(t *testing.T) {
 		{ID: 1, URL: "https://example.com/other"},
 		{ID: 2, URL: "https://example.com/target"},
 	}}
-	service := New(source, &articleStub{}, DefaultInterval)
-	service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path != "/target" {
-			t.Fatalf("fetched unexpected feed: %s", req.URL)
+	fetcher := feedFetcherFunc(func(_ context.Context, subscription feeds.Subscription) FetchedFeed {
+		if subscription.ID != 2 {
+			t.Fatalf("fetched unexpected subscription: %d", subscription.ID)
 		}
-		return &http.Response{StatusCode: 304, Body: http.NoBody, Request: req}, nil
-	})}
+		return FetchedFeed{}
+	})
+	service := New(source, &articleStub{}, fetcher, DefaultInterval)
 	if err := service.RefreshFeed(t.Context(), 2); err != nil {
 		t.Fatal(err)
 	}

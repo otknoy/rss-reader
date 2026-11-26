@@ -1,4 +1,4 @@
-package ingestion
+package httpfetch
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 
 // FetchArticle extracts a readable page without executing JavaScript or following page resources.
 // The caller saves the result only on success; feed content is always retained.
-func (s *Service) FetchArticle(ctx context.Context, rawURL string) (content articles.FullContent, err error) {
+func (c *Client) FetchArticle(ctx context.Context, rawURL string) (content articles.FullContent, err error) {
 	if err := feeds.ValidateURL(rawURL); err != nil {
 		return content, err
 	}
@@ -29,7 +29,7 @@ func (s *Service) FetchArticle(ctx context.Context, rawURL string) (content arti
 	}
 	req.Header.Set("User-Agent", "PersonalRSSReader/0.1")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	resp, err := s.client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return content, err
 	}

@@ -9,15 +9,16 @@ import (
 )
 
 var allowed = map[string]map[string]bool{
-	"feeds":             {},
-	"feeds/postgres":    {"feeds": true},
-	"articles":          {},
-	"articles/postgres": {"articles": true},
-	"config":            {"ingestion": true},
-	"ingestion":         {"feeds": true, "articles": true},
-	"reading":           {"articles": true},
-	"search":            {"articles": true},
-	"workspace":         {"feeds": true, "articles": true},
+	"feeds":               {},
+	"feeds/postgres":      {"feeds": true},
+	"articles":            {},
+	"articles/postgres":   {"articles": true},
+	"config":              {"ingestion": true},
+	"ingestion":           {"feeds": true, "articles": true},
+	"ingestion/httpfetch": {"feeds": true, "articles": true, "ingestion": true},
+	"reading":             {"articles": true},
+	"search":              {"articles": true},
+	"workspace":           {"feeds": true, "articles": true},
 }
 
 func permitted(from, to string) bool {
@@ -28,8 +29,8 @@ func permitted(from, to string) bool {
 
 func moduleName(path string) string {
 	module, rest, _ := strings.Cut(path, "/")
-	if adapter, _, _ := strings.Cut(rest, "/"); adapter == "postgres" {
-		return module + "/postgres"
+	if adapter, _, _ := strings.Cut(rest, "/"); adapter == "postgres" || adapter == "httpfetch" {
+		return module + "/" + adapter
 	}
 	return module
 }
@@ -90,6 +91,9 @@ func TestDependencyPolicy(t *testing.T) {
 		{"feeds", "feeds/postgres", false},
 		{"feeds/postgres", "feeds", true},
 		{"ingestion", "feeds/postgres", false},
+		{"ingestion", "ingestion/httpfetch", false},
+		{"ingestion/httpfetch", "ingestion", true},
+		{"reading", "ingestion/httpfetch", false},
 		{"search", "feeds", false},
 		{"articles", "shared", false},
 		{"unknown", "unknown", false},

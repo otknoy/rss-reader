@@ -16,6 +16,7 @@ import (
 	"rss-reader/internal/feeds"
 	feedpostgres "rss-reader/internal/feeds/postgres"
 	"rss-reader/internal/ingestion"
+	"rss-reader/internal/ingestion/httpfetch"
 	"rss-reader/internal/reading"
 	"rss-reader/internal/search"
 	"rss-reader/internal/workspace"
@@ -103,7 +104,8 @@ func run() error {
 	defer closeResource(adb)
 
 	fs, as := feedpostgres.New(fdb), articlepostgres.New(adb)
-	fetcher := ingestion.New(fs, as, c.FetchInterval)
+	client := httpfetch.New()
+	fetcher := ingestion.New(fs, as, client, c.FetchInterval)
 
 	if command == "fetch" {
 		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
@@ -121,7 +123,7 @@ func run() error {
 		return err
 	}
 
-	app := newApplication(fs, as, fetcher)
+	app := newApplication(fs, as, fetcher, client)
 	server := &http.Server{
 		Addr:              c.ListenAddr,
 		Handler:           app.routes(),
@@ -150,13 +152,13 @@ func run() error {
 	}
 }
 
-func newApplication(fs *feedpostgres.Store, as *articlepostgres.Store, fetcher *ingestion.Service) *application {
+func newApplication(fs *feedpostgres.Store, as *articlepostgres.Store, fetcher *ingestion.Service, client *httpfetch.Client) *application {
 	return &application{
 		feeds:         fs,
 		subscriptions: feeds.NewSubscriptionService(fs, fetcher),
 		articles:      as,
 		workspace:     workspace.New(fs, search.New(as), as),
-		reading:       reading.New(as, fetcher),
+		reading:       reading.New(as, client),
 		fetcher:       fetcher,
 	}
 }
