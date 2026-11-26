@@ -1,12 +1,14 @@
-package feeds
+package postgres
 
 import (
 	"context"
 	"database/sql"
 	"errors"
+	"rss-reader/internal/feeds"
 )
 
-func (s *Store) mergeOPML(ctx context.Context, parsed parsedOPML) (result ImportResult, err error) {
+// MergeOPML atomically merges the subscriptions parsed from an OPML document.
+func (s *Store) MergeOPML(ctx context.Context, subscriptions []feeds.OPMLSubscription) (result feeds.ImportResult, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return result, err
@@ -18,20 +20,18 @@ func (s *Store) mergeOPML(ctx context.Context, parsed parsedOPML) (result Import
 		}
 	}()
 
-	result.Existing = parsed.duplicates
-	result.Skipped = parsed.skipped
-	for _, feed := range parsed.feeds {
+	for _, feed := range subscriptions {
 		var id int64
 		err := tx.QueryRowContext(ctx, `INSERT INTO feeds.subscriptions(url,title) VALUES($1,$2)
  ON CONFLICT(url) DO NOTHING RETURNING id`, feed.URL, feed.Title).Scan(&id)
-		if err == nil && feed.folder != "" {
-			_, err = tx.ExecContext(ctx, `INSERT INTO feeds.folders(name) VALUES($1) ON CONFLICT(name) DO NOTHING`, feed.folder)
+		if err == nil && feed.Folder != "" {
+			_, err = tx.ExecContext(ctx, `INSERT INTO feeds.folders(name) VALUES($1) ON CONFLICT(name) DO NOTHING`, feed.Folder)
 			if err == nil {
 				_, err = tx.ExecContext(
 					ctx,
 					`UPDATE feeds.subscriptions SET folder_id=(SELECT id FROM feeds.folders WHERE name=$2) WHERE id=$1`,
 					id,
-					feed.folder,
+					feed.Folder,
 				)
 			}
 		} else if errors.Is(err, sql.ErrNoRows) {
@@ -43,19 +43,19 @@ func (s *Store) mergeOPML(ctx context.Context, parsed parsedOPML) (result Import
 			continue
 		}
 		if err != nil {
-			return ImportResult{}, err
+			return feeds.ImportResult{}, err
 		}
 		result.Added++
 	}
 
 	if err := tx.Commit(); err != nil {
-		return ImportResult{}, err
+		return feeds.ImportResult{}, err
 	}
 	return result, nil
 }
 
-// exportSnapshot reads folder membership and folder names from the same database snapshot.
-func (s *Store) exportSnapshot(ctx context.Context) (subscriptions []Subscription, folders []Folder, err error) {
+// OPMLSnapshot reads folder membership and folder names from the same database snapshot.
+func (s *Store) OPMLSnapshot(ctx context.Context) (subscriptions []feeds.Subscription, folders []feeds.Folder, err error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return nil, nil, err

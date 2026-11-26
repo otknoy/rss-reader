@@ -35,7 +35,7 @@ func (a *application) importOPML(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, feeds.ErrOPMLTooLarge.Error(), http.StatusRequestEntityTooLarge)
 		return
 	}
-	result, err := a.feeds.ImportOPML(r.Context(), file)
+	result, err := feeds.ImportOPML(r.Context(), a.feeds, file)
 	if errors.Is(err, feeds.ErrInvalidOPML) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -61,7 +61,7 @@ func (a *application) importOPML(w http.ResponseWriter, r *http.Request) {
 func (a *application) exportOPML(w http.ResponseWriter, r *http.Request) {
 	// Build before setting download headers, so DB/XML errors remain ordinary error responses.
 	var output bytes.Buffer
-	if err := a.feeds.ExportOPML(r.Context(), &output); err != nil {
+	if err := feeds.ExportOPML(r.Context(), a.feeds, &output); err != nil {
 		fail(w, err)
 		return
 	}

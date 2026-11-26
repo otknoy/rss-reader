@@ -33,7 +33,7 @@ func opmlUpload(t *testing.T, content []byte, returnTo string) *http.Request {
 }
 
 func TestOPMLUploadValidation(t *testing.T) {
-	app := &application{feeds: feeds.New(nil)}
+	app := &application{}
 	for _, tc := range []struct {
 		name, content string
 		status        int
