@@ -15,6 +15,7 @@ import (
 	"rss-reader/internal/config"
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
+	"rss-reader/internal/reading"
 	"rss-reader/internal/search"
 	"rss-reader/internal/workspace"
 	"rss-reader/migrations"
@@ -119,7 +120,7 @@ func run() error {
 		return err
 	}
 
-	app := &application{feeds: fs, articles: as, workspace: workspace.New(fs, search.New(as), as), fetcher: fetcher}
+	app := newApplication(fs, as, fetcher)
 	server := &http.Server{
 		Addr:              c.ListenAddr,
 		Handler:           app.routes(),
@@ -145,6 +146,16 @@ func run() error {
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return server.Shutdown(shutdown)
+	}
+}
+
+func newApplication(fs *feeds.Store, as *articles.Store, fetcher *ingestion.Service) *application {
+	return &application{
+		feeds:     fs,
+		articles:  as,
+		workspace: workspace.New(fs, search.New(as), as),
+		reading:   reading.New(as, fetcher),
+		fetcher:   fetcher,
 	}
 }
 
