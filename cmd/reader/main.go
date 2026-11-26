@@ -128,26 +128,6 @@ func run() error {
 		return err
 	}
 
-	enabled, err := autoRefreshEnabled(os.Getenv("AUTO_REFRESH"))
-	if err != nil {
-		return err
-	}
-	workerCtx, stopWorker := context.WithCancel(ctx)
-	workerDone := make(chan struct{})
-	if enabled {
-		log.Printf("automatic feed refresh enabled: base interval=%s, due checks every 1m", interval)
-		go func() {
-			defer close(workerDone)
-			pollFeeds(workerCtx, fetcher.RefreshDue)
-		}()
-	} else {
-		close(workerDone)
-	}
-	defer func() {
-		stopWorker()
-		<-workerDone
-	}()
-
 	app := &application{feeds: fs, articles: as, search: search.New(as), fetcher: fetcher}
 	addr := os.Getenv("LISTEN_ADDR")
 	if addr == "" {
@@ -185,4 +165,15 @@ func closeResource(resource io.Closer) {
 	if err := resource.Close(); err != nil {
 		log.Printf("close resource: %v", err)
 	}
+}
+
+func refreshInterval(raw string) (time.Duration, error) {
+	if raw == "" {
+		return ingestion.DefaultInterval, nil
+	}
+	interval, err := time.ParseDuration(raw)
+	if err != nil || interval < time.Minute {
+		return 0, fmt.Errorf("FETCH_INTERVAL must be a duration of at least 1m")
+	}
+	return interval, nil
 }

@@ -20,7 +20,7 @@ docker compose --profile test run --build --rm test
 
 - 通常のCompose起動はDB、マイグレーション、Webの順に実行する。`docker compose up --build --watch` の監視対象は `cmd/`、`internal/`、`go.mod`、`go.sum`。マイグレーションを追加したら通常の起動コマンドで適用する。
 - スキーマ変更は既存のSQLファイルを変更せず、`migrations/` に次の番号のファイルを追加する。統合テストは実PostgreSQL上に専用DBを作り、終了時にそのDBを削除する。
-- 自動取得は `AUTO_REFRESH`、基本間隔は `FETCH_INTERVAL` で設定する。取得間隔は基本値とフィードのTTLの長い方を使う。定期実行と1回分の処理を分け、Webと `reader fetch --due` で共有する。
+- Kubernetesの定期取得はCronJobから `reader fetch --due` を呼び出す。取得間隔は `FETCH_INTERVAL` の基本値とフィードのTTLの長い方を使う。
 - 開発用の設定例は `.env.example`。実際の `.env`、認証情報、DBダンプ、個人の購読OPMLをGitに追加しない。DBの初期パスワード設定は空のボリュームに対して実行される。
 
 ## Kubernetes へのデプロイ

@@ -112,7 +112,7 @@ func publicIP(ip netip.Addr) bool {
 // Refresh is an explicit manual refresh; it bypasses the due time but uses conditional HTTP.
 func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, s.feeds.List) }
 
-// RefreshDue performs one scheduled pass, shared by web polling and future CronJobs.
+// RefreshDue performs one scheduled pass for subscriptions that are due.
 func (s *Service) RefreshDue(ctx context.Context) error { return s.refresh(ctx, s.feeds.ListDue) }
 
 // RefreshFeed attempts the initial fetch of a single due subscription.
