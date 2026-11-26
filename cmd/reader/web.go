@@ -58,9 +58,20 @@ type feedStore interface {
 	OPMLSnapshot(context.Context) ([]feeds.Subscription, []feeds.Folder, error)
 }
 
+type articleStore interface {
+	Ping(context.Context) error
+	Get(context.Context, int64) (articles.Article, error)
+	Save(context.Context, articles.Article) error
+	SetState(context.Context, int64, string, bool) error
+	MarkRead(context.Context, []int64) (int64, error)
+	Inspect(context.Context, int64, int64, int64) ([]byte, error)
+	InspectFullContents(context.Context, int64, int64, int64) ([]byte, error)
+	InspectViews(context.Context, int64, int64) ([]byte, error)
+}
+
 type application struct {
 	feeds         feedStore
-	articles      *articles.Store
+	articles      articleStore
 	subscriptions *feeds.SubscriptionService
 	workspace     *workspace.Service
 	reading       *reading.Service

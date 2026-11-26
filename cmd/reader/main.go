@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"rss-reader/internal/articles"
+	articlepostgres "rss-reader/internal/articles/postgres"
 	"rss-reader/internal/config"
 	"rss-reader/internal/feeds"
 	feedpostgres "rss-reader/internal/feeds/postgres"
@@ -102,7 +102,7 @@ func run() error {
 	}
 	defer closeResource(adb)
 
-	fs, as := feedpostgres.New(fdb), articles.New(adb)
+	fs, as := feedpostgres.New(fdb), articlepostgres.New(adb)
 	fetcher := ingestion.New(fs, as, c.FetchInterval)
 
 	if command == "fetch" {
@@ -150,7 +150,7 @@ func run() error {
 	}
 }
 
-func newApplication(fs *feedpostgres.Store, as *articles.Store, fetcher *ingestion.Service) *application {
+func newApplication(fs *feedpostgres.Store, as *articlepostgres.Store, fetcher *ingestion.Service) *application {
 	return &application{
 		feeds:         fs,
 		subscriptions: feeds.NewSubscriptionService(fs, fetcher),

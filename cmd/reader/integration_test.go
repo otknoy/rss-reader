@@ -14,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"rss-reader/internal/articles"
+	articlepostgres "rss-reader/internal/articles/postgres"
 	"rss-reader/internal/feeds"
 	feedpostgres "rss-reader/internal/feeds/postgres"
 	"rss-reader/internal/ingestion"
@@ -202,7 +203,7 @@ func TestOPMLExportDuringFolderDeletionIntegration(t *testing.T) {
 
 func TestPrototypeIntegration(t *testing.T) {
 	ctx, owner, fdb, adb, connect := setupIntegrationDB(t)
-	fs, as := feedpostgres.New(fdb), articles.New(adb)
+	fs, as := feedpostgres.New(fdb), articlepostgres.New(adb)
 	if err := fs.Add(ctx, "https://example.com/feed.xml"); err != nil {
 		t.Fatal(err)
 	}
@@ -611,7 +612,7 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("queued article: %v %v", matching, err)
 		}
 		queuedID := matching.Items[0].ID
-		freshStore := articles.New(connect(os.Getenv("ARTICLES_DATABASE_URL")))
+		freshStore := articlepostgres.New(connect(os.Getenv("ARTICLES_DATABASE_URL")))
 		if _, err := as.MarkRead(ctx, []int64{queuedID}); err != nil {
 			t.Fatal(err)
 		}

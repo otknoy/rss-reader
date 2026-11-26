@@ -9,14 +9,15 @@ import (
 )
 
 var allowed = map[string]map[string]bool{
-	"feeds":          {},
-	"feeds/postgres": {"feeds": true},
-	"articles":       {},
-	"config":         {"ingestion": true},
-	"ingestion":      {"feeds": true, "articles": true},
-	"reading":        {"articles": true},
-	"search":         {"articles": true},
-	"workspace":      {"feeds": true, "articles": true},
+	"feeds":             {},
+	"feeds/postgres":    {"feeds": true},
+	"articles":          {},
+	"articles/postgres": {"articles": true},
+	"config":            {"ingestion": true},
+	"ingestion":         {"feeds": true, "articles": true},
+	"reading":           {"articles": true},
+	"search":            {"articles": true},
+	"workspace":         {"feeds": true, "articles": true},
 }
 
 func permitted(from, to string) bool {
@@ -82,6 +83,9 @@ func TestDependencyPolicy(t *testing.T) {
 		{"ingestion", "articles", true},
 		{"search", "articles", true},
 		{"articles", "feeds", false},
+		{"articles", "articles/postgres", false},
+		{"articles/postgres", "articles", true},
+		{"reading", "articles/postgres", false},
 		{"feeds", "ingestion", false},
 		{"feeds", "feeds/postgres", false},
 		{"feeds/postgres", "feeds", true},

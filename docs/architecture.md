@@ -15,6 +15,7 @@ Go + HTMLテンプレート + PostgreSQL（部分更新が必要になったらH
 | feeds | 購読・取得状況 | なし |
 | feeds/postgres | 購読・フォルダーのSQLと取得ロック | feeds |
 | articles | 記事・本文・既読・お気に入り・閲覧イベント | なし |
+| articles/postgres | 記事・検索・閲覧記録・本文取得リースのSQL | articles |
 | config | コマンドごとの環境変数の読み込みと検証 | ingestion |
 | ingestion | RSS取得と登録の調整 | feeds、articles |
 | reading | 既読操作・閲覧記録・記事本文取得の調整 | articles |
