@@ -26,7 +26,7 @@ docker compose --profile test run --build --rm test
 ## Kubernetes へのデプロイ
 
 - Docker Compose はローカル開発・検証に使う。開発した変更は検証後、Kubernetes の `rss-reader` 名前空間にデプロイする。
-- `make publish` でイメージを GHCR に登録し、`k8s/reader/` のイメージタグを更新する。デプロイ後はロールアウトの完了と `/healthz`、変更した機能の動作を確認する。
+- `make publish` でイメージを GHCR に登録し、`k8s/reader/kustomization.yaml` の `images.newTag` を更新し、`kubectl apply -k k8s/reader` で Web と CronJob に適用する。デプロイ後はロールアウトの完了と `/healthz`、変更した機能の動作を確認する。
 - DB のスキーマを変更した場合は、既存データでの動作と稼働中の Web との互換性を検証し、Kubernetes の `reader` DB をバックアップして復元手順を確認する。稼働中の Web と互換性がない場合は、先に書き込み元を停止する。
 - 新しいスキーマは `reader migrate` の Job で適用する。Job の成功を確認してから新しい Web を起動する。
 

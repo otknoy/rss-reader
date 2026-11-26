@@ -2,7 +2,7 @@
 
 Go、`net/http`、`html/template`、素のJavaScript、PostgreSQLで構成するモジュラーモノリスとする。
 定期取得のスケジュールと1回分の取得処理を分ける。KubernetesではCronJobがWebと同じイメージの`reader fetch --due`を1分ごとに呼び出す。
-デプロイ時はWebとCronJobのイメージタグを揃える。
+WebとCronJobのイメージタグは `k8s/reader/kustomization.yaml` の `images.newTag` に置き、通常のリリースでは `kubectl apply -k k8s/reader` で適用する。スキーマ変更時は別途マイグレーションJobを実行する。
 
 ## レイヤー構成
 
