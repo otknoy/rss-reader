@@ -701,7 +701,7 @@ func TestPrototypeIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		find := func(list []feeds.Feed, url string) feeds.Feed {
+		find := func(list []feeds.Subscription, url string) feeds.Subscription {
 			t.Helper()
 			for _, f := range list {
 				if f.URL == url {
@@ -709,7 +709,7 @@ func TestPrototypeIntegration(t *testing.T) {
 				}
 			}
 			t.Fatalf("feed not found: %s", url)
-			return feeds.Feed{}
+			return feeds.Subscription{}
 		}
 		initial, err := fs.List(ctx)
 		if err != nil {
@@ -840,6 +840,12 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatalf("load current folder order: %v %v", currentFolders, err)
 		}
 		previous := []string{fmt.Sprint(currentFolders[0].ID), fmt.Sprint(currentFolders[1].ID)}
+		if w := request("POST", "/folders/order", url.Values{
+			"folder":          {first, first},
+			"previous_folder": previous,
+		}); w.Code != http.StatusBadRequest {
+			t.Fatalf("duplicate folder order: %d %s", w.Code, w.Body.String())
+		}
 		for _, order := range [][]string{{first, second}, {second, first}} {
 			if w := request("POST", "/folders/order", url.Values{"folder": order, "previous_folder": previous}); w.Code != http.StatusSeeOther {
 				t.Fatalf("save folder order: %d %s", w.Code, w.Body.String())

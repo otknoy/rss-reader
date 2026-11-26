@@ -31,7 +31,7 @@ func TestFeedTTL(t *testing.T) {
 	} {
 		t.Run(tc.value, func(t *testing.T) {
 			raw := `<rss version="2.0"><channel><title>TTL test</title><link>https://example.com</link><description>test</description><ttl>` + tc.value + `</ttl></channel></rss>`
-			parsed, err := parseFeed([]byte(raw), base, feeds.Feed{})
+			parsed, err := parseFeed([]byte(raw), base, feeds.Subscription{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +58,7 @@ func (s *articleStub) Save(_ context.Context, a articles.Article) error {
 
 func TestConditionalFetch(t *testing.T) {
 	fixture := `<rss version="2.0"><channel><title>TTL test</title><link>https://example.com</link><description>test</description><ttl>90</ttl><item><guid>1</guid><title>記事</title><link>https://example.com/one</link></item></channel></rss>`
-	previous := feeds.Feed{
+	previous := feeds.Subscription{
 		ID:           1,
 		Title:        "old",
 		URL:          "https://example.com/feed",
@@ -111,7 +111,7 @@ func TestConditionalFetch(t *testing.T) {
 	}
 	t.Run("failed save must not commit new validators", func(t *testing.T) {
 		writer := &articleStub{err: errors.New("database unavailable")}
-		source := &subscriptionsStub{rows: []feeds.Feed{previous}}
+		source := &subscriptionsStub{rows: []feeds.Subscription{previous}}
 		service := New(source, writer, DefaultInterval)
 		service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -132,7 +132,7 @@ func TestConditionalFetch(t *testing.T) {
 }
 
 type subscriptionsStub struct {
-	rows                []feeds.Feed
+	rows                []feeds.Subscription
 	results             []feeds.FetchResult
 	interval            time.Duration
 	listCalls, dueCalls int
@@ -141,21 +141,21 @@ type subscriptionsStub struct {
 	recordErr           error
 }
 
-func (s *subscriptionsStub) List(context.Context) ([]feeds.Feed, error) {
+func (s *subscriptionsStub) List(context.Context) ([]feeds.Subscription, error) {
 	s.listCalls++
 	return s.rows, nil
 }
 
-func (s *subscriptionsStub) ListDue(context.Context) ([]feeds.Feed, error) {
+func (s *subscriptionsStub) ListDue(context.Context) ([]feeds.Subscription, error) {
 	s.dueCalls++
 	return s.rows, nil
 }
 
-func (s *subscriptionsStub) ListDueFeed(_ context.Context, id int64) ([]feeds.Feed, error) {
+func (s *subscriptionsStub) ListDueFeed(_ context.Context, id int64) ([]feeds.Subscription, error) {
 	s.dueFeedIDs = append(s.dueFeedIDs, id)
 	for _, feed := range s.rows {
 		if feed.ID == id {
-			return []feeds.Feed{feed}, nil
+			return []feeds.Subscription{feed}, nil
 		}
 	}
 	return nil, nil
@@ -175,7 +175,7 @@ func (s *subscriptionsStub) WithRefreshLock(_ context.Context, run func() error)
 }
 
 func TestRefreshContinuesAfterFeedFailure(t *testing.T) {
-	source := &subscriptionsStub{rows: []feeds.Feed{
+	source := &subscriptionsStub{rows: []feeds.Subscription{
 		{ID: 1, URL: "https://example.com/bad"},
 		{ID: 2, URL: "https://example.com/good"},
 	}}
@@ -224,7 +224,7 @@ func TestRefreshContinuesAfterFeedFailure(t *testing.T) {
 }
 
 func TestRefreshFeedLoadsOnlyRequestedSubscription(t *testing.T) {
-	source := &subscriptionsStub{rows: []feeds.Feed{
+	source := &subscriptionsStub{rows: []feeds.Subscription{
 		{ID: 1, URL: "https://example.com/other"},
 		{ID: 2, URL: "https://example.com/target"},
 	}}

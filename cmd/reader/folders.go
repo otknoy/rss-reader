@@ -4,10 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"rss-reader/internal/feeds"
-	"slices"
 	"strconv"
-
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (a *application) changeFolder(w http.ResponseWriter, r *http.Request) {
@@ -42,13 +39,12 @@ func (a *application) changeFolder(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var pgErr *pgconn.PgError
 	switch {
 	case errors.Is(err, feeds.ErrFolderName):
 		http.Error(w, err.Error(), http.StatusBadRequest)
-	case errors.As(err, &pgErr) && pgErr.Code == "23505":
+	case errors.Is(err, feeds.ErrFolderNameConflict):
 		http.Error(w, "同名のフォルダーがあります", http.StatusConflict)
-	case errors.As(err, &pgErr) && pgErr.Code == "23503":
+	case errors.Is(err, feeds.ErrFolderNotFound):
 		http.Error(w, "移動先のフォルダーがありません", http.StatusBadRequest)
 	case err != nil:
 		fail(w, err)
@@ -65,8 +61,7 @@ func (a *application) setFolderOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.feeds.SetFolderOpen(r.Context(), id, state == "true"); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		if errors.Is(err, feeds.ErrFolderNotFound) {
 			http.NotFound(w, r)
 			return
 		}
@@ -78,27 +73,28 @@ func (a *application) setFolderOpen(w http.ResponseWriter, r *http.Request) {
 
 func parseFolderOrder(values []string) ([]int64, bool) {
 	ids := make([]int64, 0, len(values))
-	seen := make(map[int64]bool)
 	for _, value := range values {
 		id, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || id <= 0 || seen[id] {
+		if err != nil || id <= 0 {
 			return nil, false
 		}
-		seen[id] = true
 		ids = append(ids, id)
 	}
-	return ids, len(ids) > 0
+	return ids, true
 }
 
 func (a *application) setFolderOrder(w http.ResponseWriter, r *http.Request) {
 	previous, previousOK := parseFolderOrder(r.PostForm["previous_folder"])
 	ids, idsOK := parseFolderOrder(r.PostForm["folder"])
-	if !previousOK || !idsOK ||
-		!slices.Equal(slices.Sorted(slices.Values(previous)), slices.Sorted(slices.Values(ids))) {
+	if !previousOK || !idsOK {
 		http.Error(w, "並び順の指定が不正です", http.StatusBadRequest)
 		return
 	}
 	err := a.feeds.SetFolderOrder(r.Context(), previous, ids)
+	if errors.Is(err, feeds.ErrInvalidFolderOrder) {
+		http.Error(w, "並び順の指定が不正です", http.StatusBadRequest)
+		return
+	}
 	if errors.Is(err, feeds.ErrFolderOrderChanged) {
 		http.Error(w, "フォルダーが別の操作で変更されたため、並び順を保存できませんでした。", http.StatusConflict)
 		return

@@ -11,7 +11,7 @@ import (
 var ErrFolderNotFound = errors.New("folder not found")
 
 type subscriptions interface {
-	List(context.Context) ([]feeds.Feed, error)
+	List(context.Context) ([]feeds.Subscription, error)
 	Folders(context.Context) ([]feeds.Folder, error)
 	ClosedFolders(context.Context) (map[int64]bool, error)
 	ActiveIDsInFolder(context.Context, int64) ([]int64, error)
@@ -41,11 +41,11 @@ type ArticleList struct {
 }
 
 type Sidebar struct {
-	Feeds          []feeds.Feed
+	Feeds          []feeds.Subscription
 	Folders        []feeds.Folder
 	Closed         map[int64]bool
 	FolderName     string
-	FeedsByFolder  map[int64][]feeds.Feed
+	FeedsByFolder  map[int64][]feeds.Subscription
 	UnreadByFeed   map[int64]int
 	UnreadByFolder map[int64]int
 }
@@ -114,7 +114,7 @@ func (s *Service) loadSidebar(ctx context.Context) (Sidebar, error) {
 	if err != nil {
 		return Sidebar{}, err
 	}
-	grouped := make(map[int64][]feeds.Feed)
+	grouped := make(map[int64][]feeds.Subscription)
 	for _, feed := range list {
 		grouped[feed.FolderID] = append(grouped[feed.FolderID], feed)
 	}

@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -47,14 +46,15 @@ var page = template.Must(template.New("page").Funcs(template.FuncMap{
 }).Parse(pageHTML))
 
 type application struct {
-	feeds     *feeds.Store
-	articles  *articles.Store
-	workspace *workspace.Service
-	reading   *reading.Service
-	fetcher   *ingestion.Service
+	feeds         *feeds.Store
+	articles      *articles.Store
+	subscriptions *feeds.SubscriptionService
+	workspace     *workspace.Service
+	reading       *reading.Service
+	fetcher       *ingestion.Service
 }
 type view struct {
-	FeedsByFolder                                             map[int64][]feeds.Feed
+	FeedsByFolder                                             map[int64][]feeds.Subscription
 	ClosedFolders                                             map[int64]bool
 	FolderUnread, FeedUnread                                  map[int64]int
 	Folders                                                   []feeds.Folder
@@ -63,7 +63,7 @@ type view struct {
 	UnreadURL, FavoritesURL                                   string
 	NewestFirst                                               bool
 	OldestURL, NewestURL                                      string
-	Feeds                                                     []feeds.Feed
+	Feeds                                                     []feeds.Subscription
 	Result                                                    articles.Result
 	Query, Filter, Message, ReturnTo, ListURL, Previous, Next string
 	FeedID                                                    int64
@@ -491,10 +491,9 @@ func (a *application) addFeed(w http.ResponseWriter, r *http.Request) {
 		}
 		folder = &n
 	}
-	feedID, err := a.feeds.AddToFolder(r.Context(), raw, folder)
+	result, err := a.subscriptions.Subscribe(r.Context(), raw, folder)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		if errors.Is(err, feeds.ErrFolderNotFound) {
 			http.Error(w, "フォルダーがありません", http.StatusBadRequest)
 			return
 		}
@@ -502,11 +501,11 @@ func (a *application) addFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	message := "saved"
-	if err := a.fetcher.RefreshFeed(r.Context(), feedID); err != nil {
+	if err := result.InitialFetchError; err != nil {
 		if errors.Is(err, feeds.ErrRefreshInProgress) {
 			message = "feed-queued"
 		} else {
-			log.Printf("initial feed refresh %d: %v", feedID, err)
+			log.Printf("initial feed refresh %d: %v", result.ID, err)
 			message = "feed-initial-error"
 		}
 	}

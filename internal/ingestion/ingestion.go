@@ -25,9 +25,9 @@ import (
 const DefaultInterval = 30 * time.Minute
 
 type subscriptions interface {
-	List(context.Context) ([]feeds.Feed, error)
-	ListDue(context.Context) ([]feeds.Feed, error)
-	ListDueFeed(context.Context, int64) ([]feeds.Feed, error)
+	List(context.Context) ([]feeds.Subscription, error)
+	ListDue(context.Context) ([]feeds.Subscription, error)
+	ListDueFeed(context.Context, int64) ([]feeds.Subscription, error)
 	Record(context.Context, int64, feeds.FetchResult, time.Duration) error
 	WithRefreshLock(context.Context, func() error) error
 }
@@ -120,7 +120,7 @@ func (s *Service) RefreshDue(ctx context.Context) error {
 
 // RefreshFeed attempts the initial fetch of a single due subscription.
 func (s *Service) RefreshFeed(ctx context.Context, id int64) error {
-	return s.refresh(ctx, func(ctx context.Context) ([]feeds.Feed, error) {
+	return s.refresh(ctx, func(ctx context.Context) ([]feeds.Subscription, error) {
 		return s.feeds.ListDueFeed(ctx, id)
 	}, true)
 }
@@ -129,7 +129,7 @@ type articleSaveError struct{ error }
 
 func (e articleSaveError) Unwrap() error { return e.error }
 
-func (s *Service) refresh(ctx context.Context, load func(context.Context) ([]feeds.Feed, error), reportFeedErrors bool) error {
+func (s *Service) refresh(ctx context.Context, load func(context.Context) ([]feeds.Subscription, error), reportFeedErrors bool) error {
 	return s.feeds.WithRefreshLock(ctx, func() error {
 		list, err := load(ctx)
 		if err != nil {
@@ -155,7 +155,7 @@ func (s *Service) refresh(ctx context.Context, load func(context.Context) ([]fee
 	})
 }
 
-func (s *Service) fetch(ctx context.Context, f feeds.Feed) (result feeds.FetchResult) {
+func (s *Service) fetch(ctx context.Context, f feeds.Subscription) (result feeds.FetchResult) {
 	result = feeds.FetchResult{
 		Title:        f.Title,
 		TTLMinutes:   f.TTLMinutes,
@@ -241,7 +241,7 @@ func parseTTL(raw string) int64 {
 	return minutes
 }
 
-func parseFeed(raw []byte, base *url.URL, f feeds.Feed) (parsedFeed, error) {
+func parseFeed(raw []byte, base *url.URL, f feeds.Subscription) (parsedFeed, error) {
 	parser := gofeed.NewParser()
 	parser.KeepOriginalFeed = true
 	parsed, err := parser.ParseString(string(raw))
