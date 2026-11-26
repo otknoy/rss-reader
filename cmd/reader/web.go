@@ -45,8 +45,21 @@ var page = template.Must(template.New("page").Funcs(template.FuncMap{
 	},
 }).Parse(pageHTML))
 
+type feedStore interface {
+	Ping(context.Context) error
+	Inspect(context.Context, string, int64, int64) ([]byte, error)
+	Remove(context.Context, int64) error
+	SaveFolder(context.Context, int64, string) error
+	DeleteFolder(context.Context, int64) error
+	Move(context.Context, int64, int64) error
+	SetFolderOpen(context.Context, int64, bool) error
+	SetFolderOrder(context.Context, []int64, []int64) error
+	MergeOPML(context.Context, []feeds.OPMLSubscription) (feeds.ImportResult, error)
+	OPMLSnapshot(context.Context) ([]feeds.Subscription, []feeds.Folder, error)
+}
+
 type application struct {
-	feeds         *feeds.Store
+	feeds         feedStore
 	articles      *articles.Store
 	subscriptions *feeds.SubscriptionService
 	workspace     *workspace.Service

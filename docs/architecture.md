@@ -13,6 +13,7 @@ Go + HTMLテンプレート + PostgreSQL（部分更新が必要になったらH
 | モジュール | 責務・所有データ | import可能な他モジュール |
 | --- | --- | --- |
 | feeds | 購読・取得状況 | なし |
+| feeds/postgres | 購読・フォルダーのSQLと取得ロック | feeds |
 | articles | 記事・本文・既読・お気に入り・閲覧イベント | なし |
 | config | コマンドごとの環境変数の読み込みと検証 | ingestion |
 | ingestion | RSS取得と登録の調整 | feeds、articles |

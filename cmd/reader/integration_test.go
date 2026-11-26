@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
+	feedpostgres "rss-reader/internal/feeds/postgres"
 	"rss-reader/internal/ingestion"
 	"rss-reader/migrations"
 	"strings"
@@ -101,7 +102,7 @@ func TestDatabasePermissionsIntegration(t *testing.T) {
 
 func TestOPMLExportDuringFolderDeletionIntegration(t *testing.T) {
 	ctx, owner, fdb, _, _ := setupIntegrationDB(t)
-	store := feeds.New(fdb)
+	store := feedpostgres.New(fdb)
 	const folderName = "Export snapshot"
 	const feedURL = "https://example.org/snapshot.xml"
 	if err := store.SaveFolder(ctx, 0, folderName); err != nil {
@@ -138,7 +139,7 @@ func TestOPMLExportDuringFolderDeletionIntegration(t *testing.T) {
 	defer cancel()
 	var output bytes.Buffer
 	done := make(chan error, 1)
-	go func() { done <- store.ExportOPML(exportCtx, &output) }()
+	go func() { done <- feeds.ExportOPML(exportCtx, store, &output) }()
 
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -201,7 +202,7 @@ func TestOPMLExportDuringFolderDeletionIntegration(t *testing.T) {
 
 func TestPrototypeIntegration(t *testing.T) {
 	ctx, owner, fdb, adb, connect := setupIntegrationDB(t)
-	fs, as := feeds.New(fdb), articles.New(adb)
+	fs, as := feedpostgres.New(fdb), articles.New(adb)
 	if err := fs.Add(ctx, "https://example.com/feed.xml"); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +226,7 @@ func TestPrototypeIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 			// A fresh store / connection sees the persisted due time, as after a restart.
-			restarted := feeds.New(connect(os.Getenv("FEEDS_DATABASE_URL")))
+			restarted := feedpostgres.New(connect(os.Getenv("FEEDS_DATABASE_URL")))
 			recorded, err := restarted.List(ctx)
 			if err != nil {
 				t.Fatal(err)
@@ -293,7 +294,7 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 	})
 	t.Run("cross-process refresh lock", func(t *testing.T) {
-		other := feeds.New(connect(os.Getenv("FEEDS_DATABASE_URL")))
+		other := feedpostgres.New(connect(os.Getenv("FEEDS_DATABASE_URL")))
 		canceled, cancelLock := context.WithCancel(ctx)
 		defer cancelLock()
 		callbackErr := errors.New("fetch failed")
@@ -774,7 +775,7 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal("OPML title was lost")
 		}
 		// A syntactically broken file must not import an otherwise valid first entry.
-		if _, err := fs.ImportOPML(ctx, strings.NewReader(`<opml><body><outline xmlUrl="https://opml.example.org/partial"/></body>`)); !errors.Is(err, feeds.ErrInvalidOPML) {
+		if _, err := feeds.ImportOPML(ctx, fs, strings.NewReader(`<opml><body><outline xmlUrl="https://opml.example.org/partial"/></body>`)); !errors.Is(err, feeds.ErrInvalidOPML) {
 			t.Fatalf("malformed XML accepted: %v", err)
 		}
 		current, err := fs.List(ctx)
@@ -877,7 +878,7 @@ func TestPrototypeIntegration(t *testing.T) {
 		}
 
 		var output, again bytes.Buffer
-		if err := fs.ExportOPML(ctx, &output); err != nil {
+		if err := feeds.ExportOPML(ctx, fs, &output); err != nil {
 			t.Fatal(err)
 		}
 		var document struct {
@@ -906,11 +907,11 @@ func TestPrototypeIntegration(t *testing.T) {
 			!strings.Contains(output.String(), "日本語 &amp; 新着") {
 			t.Fatalf("invalid export: %s", output.String())
 		}
-		result, err := fs.ImportOPML(ctx, bytes.NewReader(output.Bytes()))
+		result, err := feeds.ImportOPML(ctx, fs, bytes.NewReader(output.Bytes()))
 		if err != nil || result.Added != 0 || result.Existing != len(after) || result.Skipped != 0 {
 			t.Fatalf("round trip: %+v %v", result, err)
 		}
-		if err := fs.ExportOPML(ctx, &again); err != nil {
+		if err := feeds.ExportOPML(ctx, fs, &again); err != nil {
 			t.Fatal(err)
 		}
 		if output.String() != again.String() {
@@ -927,7 +928,7 @@ func TestPrototypeIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		failed := `<opml><body><outline xmlUrl="https://opml.example.org/rollback"/><outline xmlUrl="https://opml.example.org/reject"/></body></opml>`
-		if _, err := fs.ImportOPML(ctx, strings.NewReader(failed)); err == nil {
+		if _, err := feeds.ImportOPML(ctx, fs, strings.NewReader(failed)); err == nil {
 			t.Fatal("expected database import failure")
 		}
 		current, err = fs.List(ctx)

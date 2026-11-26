@@ -26,13 +26,14 @@ var ErrOPMLTooLarge = errors.New("OPMLファイルは2MB以下にしてくださ
 type ImportResult struct{ Added, Existing, Skipped int }
 
 type parsedOPML struct {
-	feeds               []opmlFeed
+	feeds               []OPMLSubscription
 	duplicates, skipped int
 }
 
-type opmlFeed struct {
+// OPMLSubscription contains a validated subscription and its destination folder.
+type OPMLSubscription struct {
 	URL, Title string
-	folder     string
+	Folder     string
 }
 
 func parseOPML(input io.Reader) (parsedOPML, error) {
@@ -129,10 +130,10 @@ func parseOPML(input io.Reader) (parsedOPML, error) {
 			if title == "" {
 				title = rawURL
 			}
-			result.feeds = append(result.feeds, opmlFeed{
+			result.feeds = append(result.feeds, OPMLSubscription{
 				URL:    rawURL,
 				Title:  title,
-				folder: strings.Join(path, " / "),
+				Folder: strings.Join(path, " / "),
 			})
 		case xml.EndElement:
 			if len(levels) > 0 && levels[len(levels)-1] == depth {
@@ -155,13 +156,27 @@ func parseOPML(input io.Reader) (parsedOPML, error) {
 	return result, nil
 }
 
+type opmlImporter interface {
+	MergeOPML(context.Context, []OPMLSubscription) (ImportResult, error)
+}
+
+type opmlExporter interface {
+	OPMLSnapshot(context.Context) ([]Subscription, []Folder, error)
+}
+
 // ImportOPML validates the whole file before atomically merging subscriptions.
-func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (ImportResult, error) {
+func ImportOPML(ctx context.Context, store opmlImporter, input io.Reader) (ImportResult, error) {
 	parsed, err := parseOPML(input)
 	if err != nil {
 		return ImportResult{}, err
 	}
-	return s.mergeOPML(ctx, parsed)
+	result, err := store.MergeOPML(ctx, parsed.feeds)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	result.Existing += parsed.duplicates
+	result.Skipped = parsed.skipped
+	return result, nil
 }
 
 type opmlOutline struct {
@@ -183,8 +198,8 @@ type opmlDocument struct {
 }
 
 // ExportOPML writes active subscriptions in a stable, portable OPML 2.0 document.
-func (s *Store) ExportOPML(ctx context.Context, output io.Writer) error {
-	list, folders, err := s.exportSnapshot(ctx)
+func ExportOPML(ctx context.Context, store opmlExporter, output io.Writer) error {
+	list, folders, err := store.OPMLSnapshot(ctx)
 	if err != nil {
 		return err
 	}

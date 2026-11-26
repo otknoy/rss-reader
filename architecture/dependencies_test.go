@@ -9,19 +9,28 @@ import (
 )
 
 var allowed = map[string]map[string]bool{
-	"feeds":     {},
-	"articles":  {},
-	"config":    {"ingestion": true},
-	"ingestion": {"feeds": true, "articles": true},
-	"reading":   {"articles": true},
-	"search":    {"articles": true},
-	"workspace": {"feeds": true, "articles": true},
+	"feeds":          {},
+	"feeds/postgres": {"feeds": true},
+	"articles":       {},
+	"config":         {"ingestion": true},
+	"ingestion":      {"feeds": true, "articles": true},
+	"reading":        {"articles": true},
+	"search":         {"articles": true},
+	"workspace":      {"feeds": true, "articles": true},
 }
 
 func permitted(from, to string) bool {
 	deps, known := allowed[from]
 	_, targetKnown := allowed[to]
 	return known && targetKnown && (from == to || deps[to])
+}
+
+func moduleName(path string) string {
+	module, rest, _ := strings.Cut(path, "/")
+	if adapter, _, _ := strings.Cut(rest, "/"); adapter == "postgres" {
+		return module + "/postgres"
+	}
+	return module
 }
 
 func TestModuleDependencies(t *testing.T) {
@@ -43,7 +52,7 @@ func TestModuleDependencies(t *testing.T) {
 		} else if err != nil {
 			t.Fatal(err)
 		}
-		from := strings.Split(strings.TrimPrefix(pkg.ImportPath, prefix), "/")[0]
+		from := moduleName(strings.TrimPrefix(pkg.ImportPath, prefix))
 		if _, known := allowed[from]; !known {
 			t.Errorf("unknown module: %s", pkg.ImportPath)
 		}
@@ -56,7 +65,7 @@ func TestModuleDependencies(t *testing.T) {
 				t.Errorf("%s imports package outside modules: %s", pkg.ImportPath, path)
 				continue
 			}
-			to := strings.Split(strings.TrimPrefix(path, prefix), "/")[0]
+			to := moduleName(strings.TrimPrefix(path, prefix))
 			if !permitted(from, to) {
 				t.Errorf("forbidden dependency: %s -> %s", pkg.ImportPath, path)
 			}
@@ -74,6 +83,9 @@ func TestDependencyPolicy(t *testing.T) {
 		{"search", "articles", true},
 		{"articles", "feeds", false},
 		{"feeds", "ingestion", false},
+		{"feeds", "feeds/postgres", false},
+		{"feeds/postgres", "feeds", true},
+		{"ingestion", "feeds/postgres", false},
 		{"search", "feeds", false},
 		{"articles", "shared", false},
 		{"unknown", "unknown", false},
