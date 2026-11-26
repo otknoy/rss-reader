@@ -1,4 +1,4 @@
-package articles
+package postgres
 
 import (
 	"context"
