@@ -16,6 +16,7 @@ import (
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
 	"rss-reader/internal/search"
+	"rss-reader/internal/workspace"
 	"rss-reader/migrations"
 	"syscall"
 	"time"
@@ -118,7 +119,7 @@ func run() error {
 		return err
 	}
 
-	app := &application{feeds: fs, articles: as, search: search.New(as), fetcher: fetcher}
+	app := &application{feeds: fs, articles: as, workspace: workspace.New(fs, search.New(as), as), fetcher: fetcher}
 	server := &http.Server{
 		Addr:              c.ListenAddr,
 		Handler:           app.routes(),

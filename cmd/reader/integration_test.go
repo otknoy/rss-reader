@@ -17,6 +17,7 @@ import (
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
 	"rss-reader/internal/search"
+	"rss-reader/internal/workspace"
 	"rss-reader/migrations"
 	"strings"
 	"testing"
@@ -399,10 +400,10 @@ func TestPrototypeIntegration(t *testing.T) {
 		t.Fatalf("unexpected match: %+v %v", r, err)
 	}
 	app := &application{
-		feeds:    fs,
-		articles: as,
-		search:   search.New(as),
-		fetcher:  ingestion.New(fs, as, ingestion.DefaultInterval),
+		feeds:     fs,
+		articles:  as,
+		workspace: workspace.New(fs, search.New(as), as),
+		fetcher:   ingestion.New(fs, as, ingestion.DefaultInterval),
 	}
 	request := func(method, path string, form url.Values) *httptest.ResponseRecorder {
 		t.Helper()
