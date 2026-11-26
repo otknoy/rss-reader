@@ -15,7 +15,7 @@ import (
 	"rss-reader/internal/articles"
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
-	"rss-reader/internal/search"
+	"rss-reader/internal/workspace"
 	"strconv"
 	"strings"
 	"time"
@@ -46,10 +46,10 @@ var page = template.Must(template.New("page").Funcs(template.FuncMap{
 }).Parse(pageHTML))
 
 type application struct {
-	feeds    *feeds.Store
-	articles *articles.Store
-	search   *search.Service
-	fetcher  *ingestion.Service
+	feeds     *feeds.Store
+	articles  *articles.Store
+	workspace *workspace.Service
+	fetcher   *ingestion.Service
 }
 type view struct {
 	FeedsByFolder                                             map[int64][]feeds.Feed
@@ -129,7 +129,7 @@ func (a *application) routes() http.Handler {
 }
 
 func fail(w http.ResponseWriter, err error) {
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, workspace.ErrFolderNotFound) {
 		http.Error(w, "見つかりません", 404)
 		return
 	}
@@ -298,78 +298,6 @@ func listControlLinks(q url.Values, filter string, unreadOnly bool) (favoritesOn
 	return favoritesOnly, unreadURL, favoritesURL, oldestURL, newestURL
 }
 
-type sidebar struct {
-	feeds      []feeds.Feed
-	folders    []feeds.Folder
-	closed     map[int64]bool
-	folderName string
-	feedIDs    []int64
-}
-
-func (a *application) loadSidebar(ctx context.Context, folder string) (sidebar, error) {
-	list, err := a.feeds.List(ctx)
-	if err != nil {
-		return sidebar{}, err
-	}
-	folders, err := a.feeds.Folders(ctx)
-	if err != nil {
-		return sidebar{}, err
-	}
-	closed, err := a.feeds.ClosedFolders(ctx)
-	if err != nil {
-		return sidebar{}, err
-	}
-	folderName := ""
-	var ids []int64
-	if folder != "" {
-		ids = []int64{}
-		for _, f := range folders {
-			if strconv.FormatInt(f.ID, 10) == folder {
-				folderName = f.Name
-				break
-			}
-		}
-		if folder == "0" {
-			folderName = "未分類"
-		}
-		if folderName == "" {
-			return sidebar{}, sql.ErrNoRows
-		}
-		for _, f := range list {
-			if strconv.FormatInt(f.FolderID, 10) == folder {
-				ids = append(ids, f.ID)
-			}
-		}
-	}
-	return sidebar{
-		feeds:      list,
-		folders:    folders,
-		closed:     closed,
-		folderName: folderName,
-		feedIDs:    ids,
-	}, nil
-}
-
-func groupFeedsByFolder(list []feeds.Feed) map[int64][]feeds.Feed {
-	grouped := make(map[int64][]feeds.Feed)
-	for _, feed := range list {
-		grouped[feed.FolderID] = append(grouped[feed.FolderID], feed)
-	}
-	return grouped
-}
-
-func (a *application) sidebarUnread(ctx context.Context, list []feeds.Feed) (map[int64]int, map[int64]int, error) {
-	unreadByFeed, err := a.articles.UnreadByFeed(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	folderUnread := make(map[int64]int)
-	for _, feed := range list {
-		folderUnread[feed.FolderID] += unreadByFeed[feed.ID]
-	}
-	return unreadByFeed, folderUnread, nil
-}
-
 func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 	q := r.URL.Query()
 	feedID, _ := strconv.ParseInt(q.Get("feed"), 10, 64)
@@ -391,33 +319,24 @@ func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 	}
 
 	folder := q.Get("folder")
-	var sidebar sidebar
-	var err error
-	if articlePage {
-		if folder != "" {
-			folderID, parseErr := strconv.ParseInt(folder, 10, 64)
-			if parseErr != nil || folderID < 0 || strconv.FormatInt(folderID, 10) != folder {
-				return view{}, sql.ErrNoRows
-			}
-			sidebar.feedIDs, err = a.feeds.ActiveIDsInFolder(r.Context(), folderID)
+	var folderID *int64
+	if folder != "" {
+		id, err := strconv.ParseInt(folder, 10, 64)
+		if err != nil || id < 0 || strconv.FormatInt(id, 10) != folder {
+			return view{}, sql.ErrNoRows
 		}
-	} else {
-		sidebar, err = a.loadSidebar(r.Context(), folder)
-	}
-	if err != nil {
-		return view{}, err
+		folderID = &id
 	}
 	newestFirst := filter != "history" && q.Get("sort") == "newest"
 	if !newestFirst {
 		q.Del("sort")
 	}
 
-	result, err := a.search.Find(r.Context(), articles.Query{
-		Text:    q.Get("q"),
-		View:    queryFilter,
-		FeedID:  feedID,
-		FeedIDs: sidebar.feedIDs,
-		Page:    pagination.page,
+	list, err := a.workspace.Load(r.Context(), articles.Query{
+		Text:   q.Get("q"),
+		View:   queryFilter,
+		FeedID: feedID,
+		Page:   pagination.page,
 
 		NewestFirst:       newestFirst,
 		AnchorID:          pagination.anchorID,
@@ -425,7 +344,7 @@ func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 		HistoryBefore:     pagination.historyBefore,
 		AnchorPublishedAt: pagination.publishedAt,
 		ForwardOnly:       articlePage,
-	})
+	}, folderID)
 	if err != nil {
 		return view{}, err
 	}
@@ -438,13 +357,14 @@ func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 	if len(q) > 0 {
 		back += "?" + q.Encode()
 	}
+	result := list.Result
 	prev, next := paginationLinks(q, filter, anchoredList, pagination.anchorID, result)
 	if articlePage {
 		return view{Result: result, Filter: filter, Query: r.URL.Query().Get("q"), ListURL: back, ReturnTo: back, Next: next}, nil
 	}
-	unreadByFeed, folderUnread, err := a.sidebarUnread(r.Context(), sidebar.feeds)
-	if err != nil {
-		return view{}, err
+	folderName := list.FolderName
+	if folder == "0" {
+		folderName = "未分類"
 	}
 
 	favoritesOnly, unreadURL, favoritesURL, oldestURL, newestURL := listControlLinks(q, filter, unreadOnly)
@@ -473,12 +393,12 @@ func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 	}
 
 	return view{
-		ClosedFolders: sidebar.closed,
-		FolderUnread:  folderUnread,
-		FeedUnread:    unreadByFeed,
-		Folders:       sidebar.folders,
+		ClosedFolders: list.Closed,
+		FolderUnread:  list.UnreadByFolder,
+		FeedUnread:    list.UnreadByFeed,
+		Folders:       list.Folders,
 		Folder:        folder,
-		FolderName:    sidebar.folderName,
+		FolderName:    folderName,
 		UnreadOnly:    unreadOnly,
 		FavoritesOnly: favoritesOnly,
 		UnreadURL:     unreadURL,
@@ -486,8 +406,8 @@ func (a *application) base(r *http.Request, articlePage bool) (view, error) {
 		NewestFirst:   newestFirst,
 		OldestURL:     oldestURL,
 		NewestURL:     newestURL,
-		Feeds:         sidebar.feeds,
-		FeedsByFolder: groupFeedsByFolder(sidebar.feeds),
+		Feeds:         list.Feeds,
+		FeedsByFolder: list.FeedsByFolder,
 		Result:        result,
 		Query:         r.URL.Query().Get("q"),
 		Filter:        filter,

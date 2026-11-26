@@ -17,6 +17,7 @@ Go + HTMLテンプレート + PostgreSQL（部分更新が必要になったらH
 | config | コマンドごとの環境変数の読み込みと検証 | ingestion |
 | ingestion | RSS取得と登録の調整 | feeds、articles |
 | search | 検索・将来の検索索引 | articles |
+| workspace | 記事一覧と購読サイドバーの表示データの組み立て | feeds、articles |
 
 起動コードは`cmd/`に置き、各モジュールを接続する。
 新しいモジュールや依存方向は、自動チェックの許可表を変更して追加する。

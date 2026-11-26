@@ -14,6 +14,7 @@ var allowed = map[string]map[string]bool{
 	"config":    {"ingestion": true},
 	"ingestion": {"feeds": true, "articles": true},
 	"search":    {"articles": true},
+	"workspace": {"feeds": true, "articles": true},
 }
 
 func permitted(from, to string) bool {
