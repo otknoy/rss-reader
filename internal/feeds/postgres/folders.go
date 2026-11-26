@@ -11,8 +11,7 @@ import (
 )
 
 func folderConstraintError(err error) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		switch pgErr.Code {
 		case "23503":
 			return fmt.Errorf("%w: %w", feeds.ErrFolderNotFound, err)

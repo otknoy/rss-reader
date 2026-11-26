@@ -48,7 +48,7 @@ func TestOPMLRejectsInvalidDocuments(t *testing.T) {
 	}
 	var many strings.Builder
 	many.WriteString("<opml><body>")
-	for i := 0; i < 1001; i++ {
+	for i := range 1001 {
 		if _, err := fmt.Fprintf(&many, `<outline xmlUrl="https://example.com/%d"/>`, i); err != nil {
 			t.Fatal(err)
 		}

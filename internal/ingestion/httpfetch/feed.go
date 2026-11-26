@@ -78,13 +78,11 @@ func (c *Client) FetchFeed(ctx context.Context, f feeds.Subscription) (result in
 		return
 	}
 	return ingestion.FetchedFeed{
-		FetchResult: feeds.FetchResult{
-			Title:        parsed.Title,
-			TTLMinutes:   parsed.TTLMinutes,
-			ETag:         resp.Header.Get("ETag"),
-			LastModified: resp.Header.Get("Last-Modified"),
-		},
-		Articles: parsed.Items,
+		Title:        parsed.Title,
+		TTLMinutes:   parsed.TTLMinutes,
+		ETag:         resp.Header.Get("ETag"),
+		LastModified: resp.Header.Get("Last-Modified"),
+		Articles:     parsed.Items,
 	}
 }
 

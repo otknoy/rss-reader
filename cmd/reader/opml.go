@@ -12,8 +12,7 @@ import (
 
 func (a *application) importOPML(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(feeds.MaxOPMLBytes + (64 << 10)); err != nil {
-		var limitErr *http.MaxBytesError
-		if errors.As(err, &limitErr) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			http.Error(w, feeds.ErrOPMLTooLarge.Error(), http.StatusRequestEntityTooLarge)
 		} else {
 			http.Error(w, "OPMLファイルを選択してください", http.StatusBadRequest)

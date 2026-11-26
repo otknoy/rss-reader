@@ -31,8 +31,8 @@ func TestRefreshDueKeepsValidatorsWhenArticleSaveFails(t *testing.T) {
 	source := &subscriptionsStub{rows: []feeds.Subscription{previous}}
 	fetcher := feedFetcherFunc(func(context.Context, feeds.Subscription) FetchedFeed {
 		return FetchedFeed{
-			FetchResult: feeds.FetchResult{TTLMinutes: 90, ETag: "new", LastModified: "new-date"},
-			Articles:    []articles.Article{{Title: "new article"}},
+			TTLMinutes: 90, ETag: "new", LastModified: "new-date",
+			Articles: []articles.Article{{Title: "new article"}},
 		}
 	})
 	service := New(source, writer, fetcher, DefaultInterval)
@@ -100,7 +100,7 @@ func TestRefreshContinuesAfterFeedFailure(t *testing.T) {
 	}}
 	fetcher := feedFetcherFunc(func(_ context.Context, subscription feeds.Subscription) FetchedFeed {
 		if subscription.ID == 1 {
-			return FetchedFeed{FetchResult: feeds.FetchResult{Err: errors.New("HTTP 503")}}
+			return FetchedFeed{Err: errors.New("HTTP 503")}
 		}
 		return FetchedFeed{}
 	})
