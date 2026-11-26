@@ -16,10 +16,12 @@ type SubscriptionService struct {
 	refresher initialRefresher
 }
 
+// NewSubscriptionService connects subscription storage and initial fetching.
 func NewSubscriptionService(writer subscriptionWriter, refresher initialRefresher) *SubscriptionService {
 	return &SubscriptionService{writer: writer, refresher: refresher}
 }
 
+// SubscribeResult reports the saved subscription and its initial fetch outcome.
 type SubscribeResult struct {
 	ID                int64
 	InitialFetchError error

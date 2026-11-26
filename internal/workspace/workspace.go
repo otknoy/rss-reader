@@ -8,6 +8,7 @@ import (
 	"rss-reader/internal/feeds"
 )
 
+// ErrFolderNotFound indicates that the requested folder is missing.
 var ErrFolderNotFound = errors.New("folder not found")
 
 type subscriptions interface {
@@ -25,21 +26,25 @@ type unreadCounts interface {
 	UnreadByFeed(context.Context) (map[int64]int, error)
 }
 
+// Service assembles article lists and their sidebar data.
 type Service struct {
 	subscriptions subscriptions
 	search        articleSearch
 	unread        unreadCounts
 }
 
+// New connects subscription, search, and unread count data sources.
 func New(subscriptions subscriptions, search articleSearch, unread unreadCounts) *Service {
 	return &Service{subscriptions: subscriptions, search: search, unread: unread}
 }
 
+// ArticleList contains search results and optional sidebar data.
 type ArticleList struct {
 	Result articles.Result
 	Sidebar
 }
 
+// Sidebar contains subscriptions, folders, and unread counts.
 type Sidebar struct {
 	Feeds          []feeds.Subscription
 	Folders        []feeds.Folder

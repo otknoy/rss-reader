@@ -15,8 +15,11 @@ type Folder struct {
 var ErrFolderName = errors.New("フォルダー名を入力してください")
 
 var (
-	ErrFolderNotFound     = errors.New("folder not found")
+	// ErrFolderNotFound indicates that the referenced folder does not exist.
+	ErrFolderNotFound = errors.New("folder not found")
+	// ErrFolderNameConflict indicates that the folder name is already in use.
 	ErrFolderNameConflict = errors.New("folder name already in use")
+	// ErrInvalidFolderOrder indicates that the requested order contains invalid folder IDs.
 	ErrInvalidFolderOrder = errors.New("invalid folder order")
 )
 

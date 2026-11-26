@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Config contains the environment settings for a reader command.
 type Config struct {
 	DatabaseURL         string
 	FeedsDatabaseURL    string

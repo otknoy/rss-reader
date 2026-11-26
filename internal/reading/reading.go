@@ -22,11 +22,13 @@ type contentFetcher interface {
 	FetchArticle(context.Context, string) (articles.FullContent, error)
 }
 
+// Service coordinates article display and full-content retrieval.
 type Service struct {
 	articles articleStore
 	fetcher  contentFetcher
 }
 
+// New connects article storage to the content fetcher.
 func New(articles articleStore, fetcher contentFetcher) *Service {
 	return &Service{articles: articles, fetcher: fetcher}
 }
@@ -50,6 +52,7 @@ func (s *Service) RetryContent(ctx context.Context, id int64) {
 	s.tryFetchContent(ctx, id, true)
 }
 
+// ContentStatus returns the stored state of article extraction.
 func (s *Service) ContentStatus(ctx context.Context, id int64) (articles.ContentStatus, error) {
 	return s.articles.FullContentStatus(ctx, id)
 }

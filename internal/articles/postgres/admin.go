@@ -1,3 +1,4 @@
+// Package postgres implements PostgreSQL persistence for articles.
 package postgres
 
 import "context"

@@ -243,7 +243,8 @@ func parseListPagination(q url.Values, filter string, anchoredList bool) listPag
 func paginationLinks(q url.Values, filter string, anchoredList bool, anchorID int64, result articles.Result) (string, string) {
 	prev, next := "", ""
 	q.Del("published_at")
-	if filter == "history" {
+	switch {
+	case filter == "history":
 		q.Del("after")
 		q.Del("opened_before")
 		if result.HasNext {
@@ -254,7 +255,7 @@ func paginationLinks(q url.Values, filter string, anchoredList bool, anchorID in
 			q.Del("after")
 			q.Del("opened_before")
 		}
-	} else if anchoredList {
+	case anchoredList:
 		q.Del("page")
 		q.Del("before")
 		q.Del("after")
@@ -279,7 +280,7 @@ func paginationLinks(q url.Values, filter string, anchoredList bool, anchorID in
 			// Concurrent changes can empty an anchored page. Offer the beginning of the list.
 			prev = "/?" + q.Encode()
 		}
-	} else {
+	default:
 		if result.HasPrevious {
 			q.Set("page", strconv.Itoa(result.Page-1))
 			prev = "/?" + q.Encode()

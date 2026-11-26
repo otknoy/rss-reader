@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
+// Client retrieves feeds and article content over HTTP.
 type Client struct{ http *http.Client }
 
+// New creates a client restricted to public-network destinations.
 func New() *Client { return &Client{http: publicClient()} }
 
 // publicClient checks every resolved address at connection time, including redirects.

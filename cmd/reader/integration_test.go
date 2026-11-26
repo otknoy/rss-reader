@@ -694,7 +694,6 @@ func TestPrototypeIntegration(t *testing.T) {
 			!reopenedAt.Equal(*openedAt) {
 			t.Fatalf("reopening changed first display: %v %v", reopenedAt, err)
 		}
-
 	})
 	t.Run("OPML import export and atomic merge", func(t *testing.T) {
 		existingURL := "https://opml.example.org/existing?a=1&b=2"
