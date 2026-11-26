@@ -11,6 +11,7 @@ import (
 var allowed = map[string]map[string]bool{
 	"feeds":     {},
 	"articles":  {},
+	"config":    {"ingestion": true},
 	"ingestion": {"feeds": true, "articles": true},
 	"search":    {"articles": true},
 }

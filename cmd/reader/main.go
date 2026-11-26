@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"rss-reader/internal/articles"
+	"rss-reader/internal/config"
 	"rss-reader/internal/feeds"
 	"rss-reader/internal/ingestion"
 	"rss-reader/internal/search"
@@ -30,11 +30,7 @@ func main() {
 	}
 }
 
-func openDB(ctx context.Context, key string) (*sql.DB, error) {
-	dsn := os.Getenv(key)
-	if dsn == "" {
-		return nil, fmt.Errorf("%s is required", key)
-	}
+func openDB(ctx context.Context, key, dsn string) (*sql.DB, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
@@ -54,31 +50,29 @@ func run() error {
 	if len(os.Args) > 1 {
 		command = os.Args[1]
 	}
+	if command != "web" && command != "fetch" && command != "migrate" && command != "healthcheck" {
+		return errors.New("usage: reader [web|fetch [--due]|migrate|healthcheck]")
+	}
+	if command != "healthcheck" && len(os.Args) > 2 &&
+		(command != "fetch" || len(os.Args) != 3 || os.Args[2] != "--due") {
+		return errors.New("only fetch accepts --due")
+	}
+
+	c, err := config.LoadConfig(command)
+	if err != nil {
+		return err
+	}
 	if command == "healthcheck" {
-		addr := os.Getenv("LISTEN_ADDR")
-		if addr == "" {
-			addr = ":8080"
-		}
-		_, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return err
-		}
 		client := http.Client{Timeout: 2 * time.Second}
-		resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+		resp, err := client.Get("http://127.0.0.1:" + c.HealthcheckPort + "/healthz")
 		if err != nil {
 			return err
 		}
 		defer closeResource(resp.Body)
-		if resp.StatusCode != 200 {
+		if resp.StatusCode != http.StatusOK {
 			return errors.New("unhealthy")
 		}
 		return nil
-	}
-	if command != "web" && command != "fetch" && command != "migrate" {
-		return errors.New("usage: reader [web|fetch [--due]|migrate|healthcheck]")
-	}
-	if len(os.Args) > 2 && (command != "fetch" || len(os.Args) != 3 || os.Args[2] != "--due") {
-		return errors.New("only fetch accepts --due")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -86,7 +80,7 @@ func run() error {
 	startup, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if command == "migrate" {
-		db, err := openDB(startup, "DATABASE_URL")
+		db, err := openDB(startup, "DATABASE_URL", c.DatabaseURL)
 		if err != nil {
 			return err
 		}
@@ -94,23 +88,19 @@ func run() error {
 		return migrations.Run(startup, db)
 	}
 
-	fdb, err := openDB(startup, "FEEDS_DATABASE_URL")
+	fdb, err := openDB(startup, "FEEDS_DATABASE_URL", c.FeedsDatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer closeResource(fdb)
-	adb, err := openDB(startup, "ARTICLES_DATABASE_URL")
+	adb, err := openDB(startup, "ARTICLES_DATABASE_URL", c.ArticlesDatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer closeResource(adb)
 
 	fs, as := feeds.New(fdb), articles.New(adb)
-	interval, err := refreshInterval(os.Getenv("FETCH_INTERVAL"))
-	if err != nil {
-		return err
-	}
-	fetcher := ingestion.New(fs, as, interval)
+	fetcher := ingestion.New(fs, as, c.FetchInterval)
 
 	if command == "fetch" {
 		fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
@@ -129,12 +119,8 @@ func run() error {
 	}
 
 	app := &application{feeds: fs, articles: as, search: search.New(as), fetcher: fetcher}
-	addr := os.Getenv("LISTEN_ADDR")
-	if addr == "" {
-		addr = ":8080"
-	}
 	server := &http.Server{
-		Addr:              addr,
+		Addr:              c.ListenAddr,
 		Handler:           app.routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -144,7 +130,7 @@ func run() error {
 	}
 	done := make(chan error, 1)
 	go func() {
-		log.Printf("RSS Reader listening on %s", addr)
+		log.Printf("RSS Reader listening on %s", c.ListenAddr)
 		done <- server.ListenAndServe()
 	}()
 
@@ -165,15 +151,4 @@ func closeResource(resource io.Closer) {
 	if err := resource.Close(); err != nil {
 		log.Printf("close resource: %v", err)
 	}
-}
-
-func refreshInterval(raw string) (time.Duration, error) {
-	if raw == "" {
-		return ingestion.DefaultInterval, nil
-	}
-	interval, err := time.ParseDuration(raw)
-	if err != nil || interval < time.Minute {
-		return 0, fmt.Errorf("FETCH_INTERVAL must be a duration of at least 1m")
-	}
-	return interval, nil
 }
