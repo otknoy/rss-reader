@@ -20,7 +20,7 @@ metadata:
   name: rss-reader
   namespace: rss-reader
 spec:
-  replicas: 2
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -50,6 +50,8 @@ spec:
             capabilities:
               drop: ["ALL"]
           env:
+            - name: AUTO_REFRESH
+              value: "false"
             - name: FEEDS_PASSWORD
               valueFrom:
                 secretKeyRef:

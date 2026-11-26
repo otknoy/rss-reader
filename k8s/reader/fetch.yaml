@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reader-fetch
+  namespace: rss-reader
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 720
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          automountServiceAccountToken: false
+          imagePullSecrets:
+            - name: ghcr-pull
+          containers:
+            - name: reader
+              image: ghcr.io/otknoy/rss-reader:20261125143803
+              args: ["fetch", "--due"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: FEEDS_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: FEEDS_PASSWORD
+                - name: FEEDS_DATABASE_URL
+                  value: postgres://feeds_app:$(FEEDS_PASSWORD)@postgres:5432/reader?sslmode=disable
+                - name: ARTICLES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: ARTICLES_PASSWORD
+                - name: ARTICLES_DATABASE_URL
+                  value: postgres://articles_app:$(ARTICLES_PASSWORD)@postgres:5432/reader?sslmode=disable

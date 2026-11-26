@@ -1,8 +1,9 @@
 # 設計方針
 
 Go + HTMLテンプレート + PostgreSQL（部分更新が必要になったらHTMX）のモジュラーモノリスとする。
-Webと自動RSS取得を同じプロセス・Podで実行する。定期実行と1回分の取得処理は分ける。
-将来のCronJobでは同じイメージの`reader fetch --due`を呼び出す。
+ローカル開発ではWebと自動RSS取得を同じプロセスで実行できる。定期実行と1回分の取得処理は分ける。
+KubernetesではWebの自動取得を無効にし、CronJobが同じイメージの`reader fetch --due`を1分ごとに呼び出す。
+デプロイ時はWebとCronJobのイメージタグを揃える。
 
 ## 境界のルール
 
