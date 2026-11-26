@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// Feed describes a subscription and its persisted fetch metadata.
-type Feed struct {
+// Subscription describes a subscription and its persisted fetch metadata.
+type Subscription struct {
 	FolderID                   int64
 	ID                         int64
 	URL, Title, LastError      string
@@ -56,7 +56,7 @@ func (s *Store) AddToFolder(ctx context.Context, raw string, folder *int64) (int
  folder_id=CASE WHEN $2 IS NULL THEN feeds.subscriptions.folder_id ELSE NULLIF($2,0) END,
  next_fetch_at=CASE WHEN feeds.subscriptions.active THEN feeds.subscriptions.next_fetch_at ELSE NULL END
  RETURNING id`, raw, folder).Scan(&id)
-	return id, err
+	return id, folderConstraintError(err)
 }
 
 // Remove deactivates a subscription.
@@ -76,17 +76,17 @@ func (s *Store) Remove(ctx context.Context, id int64) error {
 }
 
 // List returns active subscriptions.
-func (s *Store) List(ctx context.Context) ([]Feed, error) {
+func (s *Store) List(ctx context.Context) ([]Subscription, error) {
 	return list(ctx, s.db, false, nil)
 }
 
 // ListDue returns active subscriptions whose next fetch is due.
-func (s *Store) ListDue(ctx context.Context) ([]Feed, error) {
+func (s *Store) ListDue(ctx context.Context) ([]Subscription, error) {
 	return list(ctx, s.db, true, nil)
 }
 
 // ListDueFeed returns the specified subscription if it is active and due.
-func (s *Store) ListDueFeed(ctx context.Context, id int64) ([]Feed, error) {
+func (s *Store) ListDueFeed(ctx context.Context, id int64) ([]Subscription, error) {
 	return list(ctx, s.db, true, &id)
 }
 
@@ -94,7 +94,7 @@ type queryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func list(ctx context.Context, db queryer, dueOnly bool, id *int64) (out []Feed, err error) {
+func list(ctx context.Context, db queryer, dueOnly bool, id *int64) (out []Subscription, err error) {
 	query := `SELECT id, url, title, checked_at, last_error,
 		ttl_minutes, next_fetch_at, last_success_at, etag, last_modified, COALESCE(folder_id, 0)
 	FROM feeds.subscriptions
@@ -111,7 +111,7 @@ func list(ctx context.Context, db queryer, dueOnly bool, id *int64) (out []Feed,
 	defer func() { err = errors.Join(err, rows.Close()) }()
 
 	for rows.Next() {
-		var f Feed
+		var f Subscription
 		if err := rows.Scan(
 			&f.ID,
 			&f.URL,

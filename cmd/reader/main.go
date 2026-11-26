@@ -151,11 +151,12 @@ func run() error {
 
 func newApplication(fs *feeds.Store, as *articles.Store, fetcher *ingestion.Service) *application {
 	return &application{
-		feeds:     fs,
-		articles:  as,
-		workspace: workspace.New(fs, search.New(as), as),
-		reading:   reading.New(as, fetcher),
-		fetcher:   fetcher,
+		feeds:         fs,
+		subscriptions: feeds.NewSubscriptionService(fs, fetcher),
+		articles:      as,
+		workspace:     workspace.New(fs, search.New(as), as),
+		reading:       reading.New(as, fetcher),
+		fetcher:       fetcher,
 	}
 }
 

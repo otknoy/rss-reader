@@ -3,7 +3,6 @@ package feeds
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -32,8 +31,8 @@ type parsedOPML struct {
 }
 
 type opmlFeed struct {
-	Feed
-	folder string
+	URL, Title string
+	folder     string
 }
 
 func parseOPML(input io.Reader) (parsedOPML, error) {
@@ -131,7 +130,8 @@ func parseOPML(input io.Reader) (parsedOPML, error) {
 				title = rawURL
 			}
 			result.feeds = append(result.feeds, opmlFeed{
-				Feed:   Feed{URL: rawURL, Title: title},
+				URL:    rawURL,
+				Title:  title,
 				folder: strings.Join(path, " / "),
 			})
 		case xml.EndElement:
@@ -156,57 +156,12 @@ func parseOPML(input io.Reader) (parsedOPML, error) {
 }
 
 // ImportOPML validates the whole file before atomically merging subscriptions.
-func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (result ImportResult, err error) {
+func (s *Store) ImportOPML(ctx context.Context, input io.Reader) (ImportResult, error) {
 	parsed, err := parseOPML(input)
 	if err != nil {
-		return result, err
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return result, err
-	}
-	defer func() {
-		rollbackErr := tx.Rollback()
-		if !errors.Is(rollbackErr, sql.ErrTxDone) {
-			err = errors.Join(err, rollbackErr)
-		}
-	}()
-
-	result.Existing = parsed.duplicates
-	result.Skipped = parsed.skipped
-	for _, feed := range parsed.feeds {
-		var id int64
-		err := tx.QueryRowContext(ctx, `INSERT INTO feeds.subscriptions(url,title) VALUES($1,$2)
- ON CONFLICT(url) DO NOTHING RETURNING id`, feed.URL, feed.Title).Scan(&id)
-		if err == nil && feed.folder != "" {
-			_, err = tx.ExecContext(ctx, `INSERT INTO feeds.folders(name) VALUES($1) ON CONFLICT(name) DO NOTHING`, feed.folder)
-			if err == nil {
-				_, err = tx.ExecContext(
-					ctx,
-					`UPDATE feeds.subscriptions SET folder_id=(SELECT id FROM feeds.folders WHERE name=$2) WHERE id=$1`,
-					id,
-					feed.folder,
-				)
-			}
-		} else if errors.Is(err, sql.ErrNoRows) {
-			err = tx.QueryRowContext(ctx, `UPDATE feeds.subscriptions SET active=true,next_fetch_at=NULL WHERE url=$1 AND NOT active RETURNING id`, feed.URL).Scan(&id)
-		}
-
-		if errors.Is(err, sql.ErrNoRows) {
-			result.Existing++
-			continue
-		}
-		if err != nil {
-			return ImportResult{}, err
-		}
-		result.Added++
-	}
-
-	if err := tx.Commit(); err != nil {
 		return ImportResult{}, err
 	}
-	return result, nil
+	return s.mergeOPML(ctx, parsed)
 }
 
 type opmlOutline struct {
@@ -265,31 +220,4 @@ func (s *Store) ExportOPML(ctx context.Context, output io.Writer) error {
 	encoder := xml.NewEncoder(output)
 	encoder.Indent("", "  ")
 	return encoder.Encode(doc)
-}
-
-// exportSnapshot reads folder membership and folder names from the same database snapshot.
-func (s *Store) exportSnapshot(ctx context.Context) (subscriptions []Feed, folders []Folder, err error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() {
-		rollbackErr := tx.Rollback()
-		if !errors.Is(rollbackErr, sql.ErrTxDone) {
-			err = errors.Join(err, rollbackErr)
-		}
-	}()
-
-	subscriptions, err = list(ctx, tx, false, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	folders, err = listFolders(ctx, tx)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, nil, err
-	}
-	return subscriptions, folders, nil
 }
