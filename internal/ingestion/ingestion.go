@@ -110,19 +110,26 @@ func publicIP(ip netip.Addr) bool {
 }
 
 // Refresh is an explicit manual refresh; it bypasses the due time but uses conditional HTTP.
-func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, s.feeds.List) }
+func (s *Service) Refresh(ctx context.Context) error { return s.refresh(ctx, s.feeds.List, true) }
 
 // RefreshDue performs one scheduled pass for subscriptions that are due.
-func (s *Service) RefreshDue(ctx context.Context) error { return s.refresh(ctx, s.feeds.ListDue) }
+// Individual download and parse failures are recorded on the subscription.
+func (s *Service) RefreshDue(ctx context.Context) error {
+	return s.refresh(ctx, s.feeds.ListDue, false)
+}
 
 // RefreshFeed attempts the initial fetch of a single due subscription.
 func (s *Service) RefreshFeed(ctx context.Context, id int64) error {
 	return s.refresh(ctx, func(ctx context.Context) ([]feeds.Feed, error) {
 		return s.feeds.ListDueFeed(ctx, id)
-	})
+	}, true)
 }
 
-func (s *Service) refresh(ctx context.Context, load func(context.Context) ([]feeds.Feed, error)) error {
+type articleSaveError struct{ error }
+
+func (e articleSaveError) Unwrap() error { return e.error }
+
+func (s *Service) refresh(ctx context.Context, load func(context.Context) ([]feeds.Feed, error), reportFeedErrors bool) error {
 	return s.feeds.WithRefreshLock(ctx, func() error {
 		list, err := load(ctx)
 		if err != nil {
@@ -139,11 +146,12 @@ func (s *Service) refresh(ctx context.Context, load func(context.Context) ([]fee
 			if err := s.feeds.Record(ctx, f.ID, result, s.interval); err != nil {
 				failures = append(failures, err)
 			}
-			if result.Err != nil {
+			var saveErr articleSaveError
+			if result.Err != nil && (reportFeedErrors || errors.As(result.Err, &saveErr)) {
 				failures = append(failures, fmt.Errorf("%s: %w", f.Title, result.Err))
 			}
 		}
-		return errors.Join(failures...)
+		return errors.Join(append(failures, ctx.Err())...)
 	})
 }
 
@@ -206,7 +214,7 @@ func (s *Service) fetch(ctx context.Context, f feeds.Feed) (result feeds.FetchRe
 	}
 	for _, item := range parsed.Items {
 		if err := s.articles.Save(ctx, item); err != nil {
-			result.Err = err
+			result.Err = articleSaveError{err}
 			return
 		}
 	}

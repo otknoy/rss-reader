@@ -111,7 +111,8 @@ func TestConditionalFetch(t *testing.T) {
 	}
 	t.Run("failed save must not commit new validators", func(t *testing.T) {
 		writer := &articleStub{err: errors.New("database unavailable")}
-		service := New(nil, writer, DefaultInterval)
+		source := &subscriptionsStub{rows: []feeds.Feed{previous}}
+		service := New(source, writer, DefaultInterval)
 		service.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: 200,
@@ -124,6 +125,9 @@ func TestConditionalFetch(t *testing.T) {
 		if result.Err == nil || result.ETag != previous.ETag || result.TTLMinutes != previous.TTLMinutes {
 			t.Fatalf("unsafe validators: %+v", result)
 		}
+		if err := service.RefreshDue(t.Context()); !errors.Is(err, writer.err) {
+			t.Fatalf("scheduled refresh must report save failure, got %v", err)
+		}
 	})
 }
 
@@ -134,6 +138,7 @@ type subscriptionsStub struct {
 	listCalls, dueCalls int
 	dueFeedIDs          []int64
 	busy                bool
+	recordErr           error
 }
 
 func (s *subscriptionsStub) List(context.Context) ([]feeds.Feed, error) {
@@ -159,7 +164,7 @@ func (s *subscriptionsStub) ListDueFeed(_ context.Context, id int64) ([]feeds.Fe
 func (s *subscriptionsStub) Record(_ context.Context, _ int64, r feeds.FetchResult, interval time.Duration) error {
 	s.results = append(s.results, r)
 	s.interval = interval
-	return nil
+	return s.recordErr
 }
 
 func (s *subscriptionsStub) WithRefreshLock(_ context.Context, run func() error) error {
@@ -187,8 +192,8 @@ func TestRefreshContinuesAfterFeedFailure(t *testing.T) {
 			Request:    req,
 		}, nil
 	})}
-	if err := service.RefreshDue(context.Background()); err == nil {
-		t.Fatal("expected partial failure")
+	if err := service.RefreshDue(t.Context()); err != nil {
+		t.Fatalf("scheduled refresh failed after recording a feed error: %v", err)
 	}
 	if source.dueCalls != 1 ||
 		source.listCalls != 0 ||
@@ -206,9 +211,15 @@ func TestRefreshContinuesAfterFeedFailure(t *testing.T) {
 		t.Fatal("manual refresh ignored lock")
 	}
 	source.busy = false
-	_ = service.Refresh(context.Background())
+	if err := service.Refresh(t.Context()); err == nil {
+		t.Fatal("manual refresh must report feed failure")
+	}
 	if source.listCalls != 1 {
 		t.Fatal("manual refresh should list all feeds")
+	}
+	source.recordErr = errors.New("could not record fetch result")
+	if err := service.RefreshDue(t.Context()); !errors.Is(err, source.recordErr) {
+		t.Fatalf("scheduled refresh must report record failure, got %v", err)
 	}
 }
 
