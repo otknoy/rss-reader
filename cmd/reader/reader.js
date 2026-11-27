@@ -634,9 +634,7 @@
 
   function openOriginal() {
     if (keyboardCursorID === bulkReadCursor) return;
-    const row = articleRows().find(item => item.dataset.articleId === keyboardCursorID);
-    const scope = row || document.querySelector(".reader");
-    scope?.querySelector("[data-original-link]")?.click();
+    document.querySelector(".reader [data-original-link]")?.click();
   }
 
   async function toggleCursorFavorite() {

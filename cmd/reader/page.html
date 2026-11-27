@@ -548,7 +548,7 @@ header.list-header {
   font-size: 12px;
 }
 .actions { gap: 6px; }
-.actions button, .actions .button { padding: 3px 8px; font-size: 12px; }
+.actions button { padding: 3px 8px; font-size: 12px; }
 .actions .star {
   min-width: 32px;
   font-size: 17px;
@@ -920,7 +920,7 @@ header.list-header {
     <dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>次・前の記事を開いて既読にする。末尾のボタンも選択できます</dd>
     <dt><kbd>Enter</kbd></dt><dd>選択中の「読み込んだ記事をすべて既読にする」を実行</dd>
     <dt><kbd>Shift + j / k</kbd></dt><dd>検索範囲を切り替え</dd>
-    <dt><kbd>i</kbd></dt><dd>選択した記事の元ページを別タブで開く</dd>
+    <dt><kbd>i</kbd></dt><dd>表示中の記事の元ページを別タブで開く</dd>
     <dt><kbd>f</kbd></dt><dd>お気に入りを切り替え</dd>
     <dt><kbd>r</kbd></dt><dd>トップページを読み込む</dd>
     <dt><kbd>Space</kbd> / <kbd>Shift + Space</kbd></dt><dd>本文を下・上へスクロール</dd>
@@ -1025,7 +1025,6 @@ header.list-header {
           <input type="hidden" name="value" value="{{if .Favorite}}false{{else}}true{{end}}">
           <button class="star {{if .Favorite}}favorite{{end}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}お気に入りを解除{{else}}お気に入りに登録{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
         </form>
-        <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
       </div>
     </div>
   </article>
