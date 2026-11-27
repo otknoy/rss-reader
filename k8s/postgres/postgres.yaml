@@ -5,7 +5,7 @@ metadata:
 spec:
   clusterIP: None
   selector:
-    app: postgres-18
+    app: postgres-19
   ports:
     - name: postgres
       port: 5432

@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-19
+spec:
+  clusterIP: None
+  selector:
+    app: postgres-19
+  ports:
+    - name: postgres
+      port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-19
+spec:
+  serviceName: postgres-19
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-19
+  template:
+    metadata:
+      labels:
+        app: postgres-19
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:19.0-bookworm
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          args: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: reader
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "reader"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-client
+        resources:
+          requests:
+            storage: 32Gi
