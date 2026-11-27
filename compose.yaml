@@ -99,7 +99,7 @@ services:
         condition: service_completed_successfully
 
   prometheus:
-    image: prom/prometheus:v3.5.1
+    image: prom/prometheus:v3.16.0
     restart: unless-stopped
     ports:
       - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
