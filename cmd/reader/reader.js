@@ -371,6 +371,10 @@
     const match = /^#marked-read=(\d+)$/.exec(location.hash);
     if (!match) return;
     history.replaceState(history.state, "", "/");
+    if (mobileLayout.matches) {
+      setSidebarExpanded(true);
+      document.getElementById("sidebar-controls").focus({ preventScroll: true });
+    }
     const toast = document.querySelector("#bulk-read-toast");
     toast.textContent = `${match[1]}件の記事を既読にしました。`;
     setTimeout(() => { toast.textContent = ""; }, 5000);
