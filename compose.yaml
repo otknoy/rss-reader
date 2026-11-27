@@ -82,7 +82,7 @@ services:
         condition: service_healthy
 
   postgres-exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.21.1
     command:
       - --collector.stat_statements
       - --collector.stat_statements.include_query
