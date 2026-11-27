@@ -5,4 +5,4 @@ resources:
   - fetch.yaml
 images:
   - name: ghcr.io/otknoy/rss-reader
-    newTag: "20261127120344"
+    newTag: "20261127121956"
