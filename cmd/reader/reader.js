@@ -92,7 +92,7 @@
       if (options.openURL) {
         const result = await response.json();
         if (controller.signal.aborted) return;
-        return applyOpenedArticle(options.openURL, result);
+        return applyOpenedArticle(options.openURL, result, options.scrollToSelection);
       }
 
       const html = await response.text();
@@ -459,7 +459,7 @@
     else count.closest(".unread-badge").remove();
   }
 
-  function applyOpenedArticle(url, result) {
+  function applyOpenedArticle(url, result, scrollToSelection) {
     const next = new DOMParser().parseFromString(result.html, "text/html");
     const reader = next.querySelector("#reader-pane");
     const id = selectedID(next);
@@ -484,7 +484,7 @@
     document.querySelector("#reader-pane").replaceWith(reader);
     document.querySelector(".shell").classList.add("has-detail");
     updateSelectedRows(id, url.pathname + url.search);
-    setCursor(row, true);
+    setCursor(row, scrollToSelection);
     history.pushState({}, "", url);
     if (!document.querySelector("dialog[open]")) {
       reader.focus({ preventScroll: true });
@@ -493,12 +493,13 @@
     return true;
   }
 
-  async function openArticle(row, href) {
+  async function openArticle(row, href, { scrollToSelection = false } = {}) {
     const url = new URL(href);
     await navigate(`/articles/${row.dataset.articleId}/open`, {
       method: "POST",
       body: new URLSearchParams({ return_to: url.pathname + url.search }),
       openURL: url,
+      scrollToSelection,
     });
   }
 
@@ -602,7 +603,9 @@
       }
       const row = rows[next];
       if (row) {
-        await openArticle(row, row.querySelector("a[data-workspace-link]").href);
+        await openArticle(row, row.querySelector("a[data-workspace-link]").href, {
+          scrollToSelection: true,
+        });
       } else if (delta > 0 && !list.querySelector("[data-next-articles]")) {
         const bulkRead = list.querySelector("[data-mark-loaded-read]");
         if (!bulkRead) return;
