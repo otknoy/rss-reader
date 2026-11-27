@@ -4,7 +4,6 @@ namespace: rss-reader
 resources:
   - namespace.yaml
   - postgres.yaml
-  - postgres-18.yaml
   - postgres-19.yaml
 configMapGenerator:
   - name: postgres-init
