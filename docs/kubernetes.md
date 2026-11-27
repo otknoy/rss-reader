@@ -19,7 +19,7 @@ kubectl -n rss-reader wait --for=create --timeout=120s \
 
 ```sh
 kubectl apply -k k8s/postgres
-kubectl -n rss-reader rollout status statefulset/postgres --timeout=5m
+kubectl -n rss-reader rollout status statefulset/postgres-18 --timeout=5m
 ```
 
 空のデータボリュームで初めて起動するときに、DBとアプリ用ロールを初期化する。既存のボリュームを使う場合は、手元のSealedSecretが既存DBの認証情報と一致することを確認する。

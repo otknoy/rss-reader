@@ -44,17 +44,24 @@ spec:
             - name: postgres
               containerPort: 5432
           env:
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: reader
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
           readinessProbe:
             exec:
-              command: ["pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "postgres"]
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "reader"]
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
   volumeClaimTemplates:
     - metadata:
         name: data
