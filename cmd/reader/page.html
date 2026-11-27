@@ -954,9 +954,8 @@ header.list-header {
   <article class="reader" data-reading-id="{{.Detail.ID}}" data-content-fetched="{{if .Detail.FullFetchedAt}}true{{else}}false{{end}}" data-content-error="{{if .Detail.FullFetchError}}true{{else}}false{{end}}">
   {{with .Detail}}
     <div class="meta"><span>{{.SourceName}}</span><time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{date .PublishedAt}}</time></div>
-    <h1>{{.Title}}</h1>
+    <h1><a href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>{{.Title}}</a></h1>
     <div class="actions">
-      <a class="button" href="{{.URL}}" target="_blank" rel="noopener noreferrer" data-original-link>元記事 ↗</a>
       <form method="post" action="/articles/{{.ID}}/state">
         <input type="hidden" name="return_to" value="{{$.ReturnTo}}">
         <input type="hidden" name="kind" value="read">
@@ -993,9 +992,9 @@ header.list-header {
         {{- else if .BodyText -}}
           {{.BodyText}}
         {{- else if .FullFetchError -}}
-          本文を表示できませんでした。上の「元記事」からお読みください。
+          本文を表示できませんでした。タイトルから元の記事を開けます。
         {{- else -}}
-          本文を取得しています。上の「元記事」からも読めます。
+          本文を取得しています。タイトルから元の記事を開けます。
         {{- end -}}
       </div>
     {{end}}
