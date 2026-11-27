@@ -414,8 +414,15 @@
       else last--;
     }
 
-    if (titles[first].top < top) pane.scrollTop += Math.floor(titles[first].top - top);
-    else if (titles[last].bottom > bottom) pane.scrollTop += Math.ceil(titles[last].bottom - bottom);
+    let offset = 0;
+    if (titles[first].top < top) offset = Math.floor(titles[first].top - top);
+    else if (titles[last].bottom > bottom) offset = Math.ceil(titles[last].bottom - bottom);
+    if (offset) {
+      pane.scrollBy({
+        top: offset,
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+      });
+    }
   }
 
   function setCursor(item, scroll = false) {
