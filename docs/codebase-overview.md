@@ -2,7 +2,7 @@
 
 RSS Reader は、RSS・Atom の購読、記事の閲覧・保存、検索、OPML の入出力に対応する個人用リーダーです。このガイドは、画面やコマンドを起点に処理をたどり、変更箇所を見つけるための開発者向け資料です。
 
-関連資料は [起動手順](../README.md)・[開発ルール](../AGENTS.md)・[設計方針](architecture.md) を参照してください。
+関連資料は [起動手順](../README.md)・[開発ルール](../AGENTS.md)・[設計方針](architecture.md)・[Kubernetes運用手順](kubernetes.md) を参照してください。
 
 ## 全体構成
 

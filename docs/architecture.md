@@ -4,20 +4,7 @@ Go、`net/http`、`html/template`、素のJavaScript、PostgreSQLで構成する
 定期取得のスケジュールと1回分の取得処理を分ける。KubernetesではCronJobがWebと同じイメージの`reader fetch --due`を1分ごとに呼び出す。
 WebとCronJobのイメージタグは `k8s/reader/kustomization.yaml` の `images.newTag` に置き、通常のリリースでは `kubectl apply -k k8s/reader` で適用する。スキーマ変更時は別途マイグレーションJobを実行する。
 
-## スキーマ変更の適用
-
-`make publish` で発行し、`k8s/reader/kustomization.yaml` に設定したリリースタグを `release_tag` に指定する。同じイメージでマイグレーションJobを作成し、成功を確認してからWebとCronJobを更新する。
-
-```sh
-release_tag=20261126142820  # 今回発行したタグに置き換える
-job=$(kubectl set image --local -f k8s/reader/migrate.yaml \
-  "reader=ghcr.io/otknoy/rss-reader:${release_tag}" -o yaml |
-  kubectl create -f - -o name) &&
-kubectl -n rss-reader wait --for=condition=complete --timeout=5m "$job" &&
-kubectl apply -k k8s/reader
-```
-
-Job名は作成のたびに生成される。Jobが完了しない場合は `kubectl -n rss-reader logs "$job"` で原因を確認する。
+初回構築・通常リリース・スキーマ変更の操作手順は [Kubernetes運用手順](kubernetes.md) を参照する。
 
 ## レイヤー構成
 
